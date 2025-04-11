@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>多文档分析系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%);
+            --secondary-gradient: linear-gradient(135deg, #FF6B6B 0%, #FF0000 100%);
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+        }
+
+        body {
+            background: #f8f9fa;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: var(--primary-gradient);
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ffffff' fill-opacity='0.1' fill-rule='evenodd'/%3E%3C/svg%3E");
+            opacity: 0.1;
+        }
+
+        .header h2 {
+            color: white;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .task-card {
+            background: white;
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .task-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+        }
+
+        .task-status {
+            font-size: 0.8em;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-completed {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+        }
+
+        .status-processing {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+        }
+
+        .status-failed {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+        }
+
+        .status-created {
+            background: linear-gradient(135deg, #9e9e9e 0%, #757575 100%);
+            color: white;
+        }
+
+        .btn-primary {
+            background: var(--primary-gradient);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .modal-content {
+            border-radius: 15px;
+            border: none;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        .modal-header {
+            background: var(--primary-gradient);
+            color: white;
+            border-radius: 15px 15px 0 0;
+        }
+
+        .modal-header .btn-close {
+            filter: brightness(0) invert(1);
+        }
+
+        .form-control {
+            border-radius: 10px;
+            border: 1px solid #e0e0e0;
+            padding: 12px;
+        }
+
+        .form-control:focus {
+            border-color: #6B73FF;
+            box-shadow: 0 0 0 0.2rem rgba(107, 115, 255, 0.25);
+        }
+
+        .card-title {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .text-muted {
+            color: #666 !important;
+        }
+
+        .btn-outline-primary {
+            border-radius: 20px;
+            padding: 8px 20px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-outline-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2><i class="fas fa-file-alt me-2"></i>多文档分析系统</h2>
+                <button type="button" class="btn btn-primary" id="newTaskBtn">
+                    <i class="fas fa-plus me-2"></i>新建任务
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 任务列表 -->
+        <div class="row">
+            <div class="col-12">
+                <div th:each="task : ${tasks}" class="card task-card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="card-title">
+                                <i class="fas fa-tasks me-2"></i>
+                                <span th:text="${task.taskName}"></span>
+                            </h5>
+                            <span class="task-status" th:classappend="${'status-' + #strings.toLowerCase(task.status)}"
+                                  th:text="${task.status}"></span>
+                        </div>
+                        <p class="card-text">
+                            <small class="text-muted">
+                                <i class="far fa-clock me-1"></i>
+                                创建时间：
+                            </small>
+                            <span th:text="${#temporals.format(task.createdTime, 'yyyy-MM-dd HH:mm:ss')}"></span>
+                        </p>
+                        <a th:href="@{'/tasks/' + ${task.id} + '/progress'}" class="btn btn-outline-primary">
+                            <i class="fas fa-arrow-right me-2"></i>查看详情
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新建任务模态框 -->
+        <div class="modal fade" id="newTaskModal" tabindex="-1" aria-labelledby="newTaskModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form th:action="@{/upload}" method="post" enctype="multipart/form-data" id="newTaskForm">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="newTaskModalLabel">
+                                <i class="fas fa-plus-circle me-2"></i>新建任务
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="taskName" class="form-label">
+                                    <i class="fas fa-tag me-2"></i>任务名称
+                                </label>
+                                <input type="text" class="form-control" id="taskName" name="taskName" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="wordFiles" class="form-label">
+                                    <i class="fas fa-file-word me-2"></i>Word文档
+                                </label>
+                                <input type="file" class="form-control" id="wordFiles" name="wordFiles" multiple accept=".doc,.docx" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="excelFiles" class="form-label">
+                                    <i class="fas fa-file-excel me-2"></i>Excel表格
+                                </label>
+                                <input type="file" class="form-control" id="excelFiles" name="excelFiles" multiple accept=".xls,.xlsx" required>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-check me-2"></i>创建任务
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap Bundle JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- 自定义 JS -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取必要的元素
+            const newTaskBtn = document.getElementById('newTaskBtn');
+            const newTaskModal = document.getElementById('newTaskModal');
+            const newTaskForm = document.getElementById('newTaskForm');
+            
+            // 初始化 Bootstrap 模态框
+            const modal = new bootstrap.Modal(newTaskModal);
+            
+            // 处理新建任务按钮点击
+            if (newTaskBtn) {
+                newTaskBtn.addEventListener('click', function() {
+                    modal.show();
+                });
+            }
+            
+            // 处理表单提交
+            if (newTaskForm) {
+                newTaskForm.addEventListener('submit', function(event) {
+                    const taskName = document.getElementById('taskName').value;
+                    const wordFiles = document.getElementById('wordFiles').files;
+                    const excelFiles = document.getElementById('excelFiles').files;
+                    
+                    if (!taskName.trim()) {
+                        event.preventDefault();
+                        alert('请输入任务名称');
+                        return;
+                    }
+                    
+                    if (wordFiles.length === 0 || excelFiles.length === 0) {
+                        event.preventDefault();
+                        alert('请同时上传Word文档和Excel表格');
+                        return;
+                    }
+                });
+            }
+            
+            // 自动刷新处理中的任务
+            const processingTasks = document.querySelectorAll('[data-task-status="PROCESSING"]');
+            if (processingTasks.length > 0) {
+                setTimeout(function() {
+                    window.location.reload();
+                }, 5000);
+            }
+        });
+    </script>
+</body>
+</html> 

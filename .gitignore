@@ -1,0 +1,41 @@
+# Maven
+target/
+*.jar
+*.war
+*.ear
+*.class
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea/
+out/
+
+# VS Code
+.vscode/
+
+# Mac
+.DS_Store
+
+# Application specific
+uploads/
+logs/
+
+# Dependency directories
+bin/
+node_modules/
+
+# Spring Boot
+.springBeans
+
+# Misc
+*.log
+*.tmp
+*.bak 
