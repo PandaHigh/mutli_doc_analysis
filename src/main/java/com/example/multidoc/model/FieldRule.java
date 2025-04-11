@@ -32,6 +32,9 @@ public class FieldRule {
     
     private Integer priority; // 规则优先级，越高越重要
     
+    @Column(name = "confidence")
+    private Double confidence;
+    
     public enum RuleType {
         EXPLICIT, // 显式规则
         IMPLICIT  // 隐含规则
@@ -104,5 +107,13 @@ public class FieldRule {
 
     public void setPriority(Integer priority) {
         this.priority = priority;
+    }
+
+    public Double getConfidence() {
+        return confidence;
+    }
+
+    public void setConfidence(Double confidence) {
+        this.confidence = confidence;
     }
 } 

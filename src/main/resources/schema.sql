@@ -19,14 +19,15 @@ DROP TABLE IF EXISTS word_files;
 DROP TABLE IF EXISTS excel_files;
 
 -- 分析任务表
-CREATE TABLE analysis_task (
+CREATE TABLE IF NOT EXISTS analysis_task (
     id CHAR(36) PRIMARY KEY,
     task_name VARCHAR(255) NOT NULL,
     created_time DATETIME NOT NULL,
-    status VARCHAR(20) NOT NULL,
+    status VARCHAR(200) NOT NULL,
     word_file_paths JSON,
     excel_file_paths JSON,
     result_file_path VARCHAR(255),
+    chunk_size INT,
     INDEX idx_task_status (status),
     INDEX idx_created_time (created_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

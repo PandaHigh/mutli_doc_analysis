@@ -14,12 +14,9 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,12 +27,6 @@ public class AIService {
     
     @Autowired
     private ChatClient chatClient;
-    
-    @Autowired
-    private RestTemplate restTemplate;
-    
-    @Value("${ai.service.url}")
-    private String aiServiceUrl;
     
     private final ObjectMapper objectMapper = new ObjectMapper();
     
@@ -308,8 +299,9 @@ public class AIService {
             prompt.append("  \"relevantText\": \"相关文本内容\"\n");
             prompt.append("}");
 
-            // 调用AI服务
-            String response = callAIService(prompt.toString());
+            // 改用ChatClient调用AI服务
+            String systemPrompt = "你是一个专业的分类相关性评估专家，能够评估分类与文档内容的相关程度。";
+            String response = executePrompt(systemPrompt, prompt.toString());
             
             // 验证JSON格式
             objectMapper.readTree(response);
@@ -351,8 +343,9 @@ public class AIService {
             prompt.append("  ]\n");
             prompt.append("}");
 
-            // 调用AI服务
-            String response = callAIService(prompt.toString());
+            // 改用ChatClient调用AI服务
+            String systemPrompt = "你是一个专业的规则提取专家，能够从文本中识别和提取规则。";
+            String response = executePrompt(systemPrompt, prompt.toString());
             
             // 验证JSON格式
             objectMapper.readTree(response);
@@ -385,31 +378,36 @@ public class AIService {
     }
 
     /**
-     * 调用AI服务
+     * 分析文本块内容
+     * @param content 文本内容
+     * @param fields 相关字段列表
+     * @return 分析结果JSON
      */
-    private String callAIService(String prompt) {
+    public String analyzeChunkContent(String content, List<ExcelField> fields) {
         try {
-            // 构建请求
-            Map<String, Object> request = new HashMap<>();
-            request.put("prompt", prompt);
-            request.put("max_tokens", 2000);
-            request.put("temperature", 0.7);
-
-            // 发送请求
-            String response = restTemplate.postForObject(
-                aiServiceUrl,
-                request,
-                String.class
-            );
-
-            if (response == null || response.trim().isEmpty()) {
-                throw new RuntimeException("AI service returned empty response");
+            StringBuilder prompt = new StringBuilder();
+            prompt.append("请分析以下文本内容，找出与给定字段相关的信息：\n\n");
+            prompt.append("文本内容：\n").append(content).append("\n\n");
+            prompt.append("相关字段：\n");
+            for (ExcelField field : fields) {
+                prompt.append("- ").append(field.getFieldName())
+                      .append(": ").append(field.getDescription()).append("\n");
             }
+            prompt.append("\n请返回JSON格式的分析结果，包含以下信息：\n");
+            prompt.append("1. 每个字段的相关内容\n");
+            prompt.append("2. 字段之间的关联关系\n");
+            prompt.append("3. 可能的规则或约束\n");
 
+            String systemPrompt = "你是一个专业的文本分析专家，能够从文档中提取结构化信息。";
+            String response = executePrompt(systemPrompt, prompt.toString());
+            
+            // 验证JSON格式
+            objectMapper.readTree(response);
+            
             return response;
         } catch (Exception e) {
-            logger.error("调用AI服务失败", e);
-            throw new RuntimeException("调用AI服务失败: " + e.getMessage(), e);
+            logger.error("分析文本块内容失败", e);
+            throw new RuntimeException("分析文本块内容失败: " + e.getMessage(), e);
         }
     }
 } 

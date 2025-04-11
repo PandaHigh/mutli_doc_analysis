@@ -104,99 +104,83 @@ public class AnalysisService {
                 JsonNode categoriesNode = classificationNode.get("categories");
                 updateTaskStatus(taskId, STEP_FIELD_CLASSIFICATION, "字段分类完成", 100);
 
-                // 更新任务状态为等待用户选择
-                task.setStatus(AnalysisTask.TaskStatus.WAITING_FOR_SELECTION);
-                taskRepository.save(task);
-
-                // 返回分类结果，等待用户选择
-                AnalysisResult result = new AnalysisResult();
-                result.setTask(task);
-                result.setCompletedTime(LocalDateTime.now());
-                result.setResultJson(classificationResult);
-                return resultRepository.save(result);
-
-            } catch (Exception e) {
-                logger.error("分析任务执行失败: " + taskId, e);
-                task.setStatus(AnalysisTask.TaskStatus.FAILED);
-                taskRepository.save(task);
-
-                AnalysisResult errorResult = new AnalysisResult();
-                errorResult.setTask(task);
-                errorResult.setCompletedTime(LocalDateTime.now());
-                errorResult.setErrorMessage(e.getMessage());
-                return resultRepository.save(errorResult);
-            }
-        });
-    }
-
-    /**
-     * 继续分析任务（用户选择分类后）
-     */
-    @Transactional
-    public CompletableFuture<AnalysisResult> continueAnalysis(String taskId, List<String> selectedCategories, int chunkSize) {
-        AnalysisTask task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("任务不存在: " + taskId));
-
-        // 更新任务状态为处理中
-        task.setStatus(AnalysisTask.TaskStatus.PROCESSING);
-        taskRepository.save(task);
-
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                // 第三步：处理Word文档（使用用户指定的块大小）
+                // 第三步：处理Word文档
                 updateTaskStatus(taskId, STEP_WORD_PROCESSING, "开始处理Word文档", 0);
-                documentService.processWordDocuments(task, chunkSize);
+                documentService.processWordDocuments(task);
                 updateTaskStatus(taskId, STEP_WORD_PROCESSING, "Word文档处理完成", 100);
 
-                // 获取分类结果
-                AnalysisResult classificationResult = resultRepository.findByTask(task)
-                        .orElseThrow(() -> new RuntimeException("分类结果不存在"));
-                JsonNode classificationNode = objectMapper.readTree(classificationResult.getResultJson());
-                JsonNode categoriesNode = classificationNode.get("categories");
+                // 第四步：分析所有分类
+                updateTaskStatus(taskId, STEP_CATEGORY_ANALYSIS, "开始分析分类", 0);
+                List<WordChunk> chunks = chunkRepository.findByTask(task);
+                List<FieldRelation> relations = new ArrayList<>();
+                List<FieldRule> rules = new ArrayList<>();
 
-                // 过滤选中的分类
-                List<JsonNode> selectedCategoryNodes = new ArrayList<>();
+                // 分析所有分类
                 for (JsonNode categoryNode : categoriesNode) {
-                    String categoryName = categoryNode.get("categoryName").asText();
-                    if (selectedCategories.contains(categoryName)) {
-                        selectedCategoryNodes.add(categoryNode);
+                    String category = categoryNode.get("name").asText();
+                    List<ExcelField> categoryFields = new ArrayList<>();
+                    
+                    for (JsonNode fieldNode : categoryNode.get("fields")) {
+                        String fieldName = fieldNode.asText();
+                        ExcelField field = fields.stream()
+                                .filter(f -> f.getFieldName().equals(fieldName))
+                                .findFirst()
+                                .orElse(null);
+                        if (field != null) {
+                            categoryFields.add(field);
+                        }
+                    }
+
+                    // 分析分类相关的内容
+                    for (WordChunk chunk : chunks) {
+                        String analysisResult = aiService.analyzeChunkContent(chunk.getContent(), categoryFields);
+                        JsonNode analysisNode = objectMapper.readTree(analysisResult);
+                        
+                        // 提取关系
+                        JsonNode relationsNode = analysisNode.get("relations");
+                        if (relationsNode != null && relationsNode.isArray()) {
+                            for (JsonNode relationNode : relationsNode) {
+                                FieldRelation relation = new FieldRelation();
+                                relation.setTask(task);
+                                relation.setSourceField(findFieldByName(fields, relationNode.get("source").asText()));
+                                relation.setTargetField(findFieldByName(fields, relationNode.get("target").asText()));
+                                relation.setRelationType(relationNode.get("type").asText());
+                                relation.setConfidence(relationNode.get("confidence").asDouble());
+                                relations.add(relation);
+                            }
+                        }
+
+                        // 提取规则
+                        JsonNode rulesNode = analysisNode.get("rules");
+                        if (rulesNode != null && rulesNode.isArray()) {
+                            for (JsonNode ruleNode : rulesNode) {
+                                FieldRule rule = new FieldRule();
+                                rule.setTask(task);
+                                rule.setField(findFieldByName(fields, ruleNode.get("field").asText()));
+                                rule.setRuleType(FieldRule.RuleType.valueOf(ruleNode.get("type").asText()));
+                                rule.setRuleContent(ruleNode.get("content").asText());
+                                rule.setConfidence(ruleNode.get("confidence").asDouble());
+                                rules.add(rule);
+                            }
+                        }
                     }
                 }
 
-                List<String> wordChunks = documentService.getWordChunksContent(task);
-                int totalCategories = selectedCategoryNodes.size();
-                int processedCategories = 0;
+                // 保存关系
+                relationRepository.saveAll(relations);
+                updateTaskStatus(taskId, STEP_CATEGORY_ANALYSIS, "分类分析完成", 100);
 
-                // 第四步：分析选中的分类
-                for (JsonNode categoryNode : selectedCategoryNodes) {
-                    processedCategories++;
-                    String categoryName = categoryNode.get("categoryName").asText();
-                    
-                    updateTaskStatus(taskId, STEP_CATEGORY_ANALYSIS, 
-                        String.format("正在分析类别: %s (%d/%d)", categoryName, processedCategories, totalCategories),
-                        (int) ((processedCategories - 1) * 100.0 / totalCategories));
+                // 第五步：提取规则
+                updateTaskStatus(taskId, STEP_RULE_EXTRACTION, "开始提取规则", 0);
+                ruleRepository.saveAll(rules);
+                updateTaskStatus(taskId, STEP_RULE_EXTRACTION, "规则提取完成", 100);
 
-                    String relevanceResult = aiService.evaluateCategoryRelevance(categoryNode, wordChunks);
-                    JsonNode relevanceNode = objectMapper.readTree(relevanceResult);
-                    String relevantText = relevanceNode.get("relevantText").asText();
-                    
-                    updateTaskStatus(taskId, STEP_RULE_EXTRACTION,
-                        String.format("正在为类别 %s 提取规则", categoryName), 0);
-                    
-                    String rulesResult = aiService.extractCategoryRules(
-                            categoryNode, relevantText);
-                    JsonNode rulesNode = objectMapper.readTree(rulesResult);
-                    saveCategoryRules(task, categoryNode, rulesNode);
-                    
-                    updateTaskStatus(taskId, STEP_RULE_EXTRACTION,
-                        String.format("类别 %s 规则提取完成", categoryName), 100);
-                }
-
-                // 第五步：生成最终结果
-                updateTaskStatus(taskId, STEP_RESULT_GENERATION, "正在生成分析结果", 0);
+                // 第六步：生成结果
+                updateTaskStatus(taskId, STEP_RESULT_GENERATION, "生成分析结果", 0);
                 AnalysisResult result = generateAnalysisResult(task);
-                updateTaskStatus(taskId, STEP_RESULT_GENERATION, "分析结果生成完成", 100);
+                updateTaskStatus(taskId, STEP_RESULT_GENERATION, "分析完成", 100);
 
+                // 更新任务状态
                 task.setStatus(AnalysisTask.TaskStatus.COMPLETED);
                 taskRepository.save(task);
 
@@ -214,6 +198,13 @@ public class AnalysisService {
                 return resultRepository.save(errorResult);
             }
         });
+    }
+
+    private ExcelField findFieldByName(List<ExcelField> fields, String fieldName) {
+        return fields.stream()
+                .filter(f -> f.getFieldName().equals(fieldName))
+                .findFirst()
+                .orElse(null);
     }
 
     /**
@@ -254,6 +245,35 @@ public class AnalysisService {
             logs.add(logEntry);
             
             logger.info("任务 {} - {}: {} (进度: {}%)", taskId, step, message, progress);
+
+            // 更新任务状态
+            try {
+                AnalysisTask task = taskRepository.findById(taskId).orElse(null);
+                if (task != null) {
+                    // 根据步骤更新任务状态
+                    AnalysisTask.TaskStatus newStatus = getStatusFromStep(step);
+                    if (newStatus != null && task.getStatus() != newStatus) {
+                        task.setStatus(newStatus);
+                        taskRepository.save(task);
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("更新任务状态失败: " + taskId, e);
+            }
+        }
+    }
+
+    private AnalysisTask.TaskStatus getStatusFromStep(String step) {
+        switch (step) {
+            case STEP_EXCEL_PROCESSING:
+            case STEP_FIELD_CLASSIFICATION:
+            case STEP_WORD_PROCESSING:
+            case STEP_CATEGORY_ANALYSIS:
+            case STEP_RULE_EXTRACTION:
+            case STEP_RESULT_GENERATION:
+                return AnalysisTask.TaskStatus.PROCESSING;
+            default:
+                return null;
         }
     }
 
@@ -312,11 +332,21 @@ public class AnalysisService {
 
                 // 将字段信息保存到数据库
                 for (ExcelProcessor.ElementInfo fieldInfo : fieldInfos) {
-                    ExcelField field = new ExcelField();
-                    field.setTask(task);
-                    field.setFieldName(fieldInfo.getValue());
-                    field.setDescription(fieldInfo.getComment());
-                    fieldRepository.save(field);
+                    // 检查字段是否已存在
+                    Optional<ExcelField> existingField = fieldRepository.findByTaskAndFieldName(task, fieldInfo.getValue());
+                    if (existingField.isPresent()) {
+                        // 如果字段已存在，更新描述
+                        ExcelField field = existingField.get();
+                        field.setDescription(fieldInfo.getComment());
+                        fieldRepository.save(field);
+                    } else {
+                        // 如果字段不存在，创建新字段
+                        ExcelField field = new ExcelField();
+                        field.setTask(task);
+                        field.setFieldName(fieldInfo.getValue());
+                        field.setDescription(fieldInfo.getComment());
+                        fieldRepository.save(field);
+                    }
                 }
 
                 logger.info("成功处理Excel文档: {}, 提取{}个字段", excelPath, fieldInfos.size());
@@ -324,55 +354,6 @@ public class AnalysisService {
                 logger.error("处理Excel文档失败: " + excelPath, e);
                 throw new RuntimeException("处理Excel文档失败: " + e.getMessage(), e);
             }
-        }
-    }
-
-    /**
-     * 保存分类规则
-     */
-    private void saveCategoryRules(AnalysisTask task, JsonNode categoryNode, JsonNode rulesNode) {
-        JsonNode fieldsNode = categoryNode.get("fields");
-        
-        // 处理显式规则
-        JsonNode explicitRulesNode = rulesNode.get("explicitRules");
-        if (explicitRulesNode != null && explicitRulesNode.isArray()) {
-            for (JsonNode ruleNode : explicitRulesNode) {
-                saveRule(task, fieldsNode, ruleNode, FieldRule.RuleType.EXPLICIT);
-            }
-        }
-        
-        // 处理隐含规则
-        JsonNode implicitRulesNode = rulesNode.get("implicitRules");
-        if (implicitRulesNode != null && implicitRulesNode.isArray()) {
-            for (JsonNode ruleNode : implicitRulesNode) {
-                saveRule(task, fieldsNode, ruleNode, FieldRule.RuleType.IMPLICIT);
-            }
-        }
-    }
-    
-    /**
-     * 保存单个规则
-     */
-    private void saveRule(AnalysisTask task, JsonNode fieldsNode, JsonNode ruleNode, FieldRule.RuleType ruleType) {
-        String ruleTypeStr = ruleNode.get("ruleType").asText();
-        String description = ruleNode.get("description").asText();
-        String example = ruleNode.get("example").asText();
-        
-        // 为每个字段创建规则
-        for (JsonNode fieldNode : fieldsNode) {
-            String fieldName = fieldNode.asText();
-            ExcelField field = fieldRepository.findByTaskAndFieldName(task, fieldName)
-                    .orElseThrow(() -> new RuntimeException("字段不存在: " + fieldName));
-            
-            FieldRule rule = new FieldRule();
-            rule.setTask(task);
-            rule.setField(field);
-            rule.setFieldName(fieldName);
-            rule.setRuleType(ruleType);
-            rule.setRuleContent(String.format("%s|%s|%s", ruleTypeStr, description, example));
-            rule.setPriority(ruleType == FieldRule.RuleType.EXPLICIT ? 1 : 2);
-            
-            ruleRepository.save(rule);
         }
     }
 
@@ -579,83 +560,16 @@ public class AnalysisService {
         }
     }
 
-    public CompletableFuture<AnalysisResult> startAnalysis(String taskId, List<String> selectedCategories) {
-        AnalysisTask task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("任务不存在: " + taskId));
-
-        // 获取配置
-        FileStorageConfig config = configRepository.findById(1L)
-                .orElseThrow(() -> new RuntimeException("配置不存在"));
-
-        // 初始化进度跟踪
-        initializeTaskProgress(taskId);
-
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                updateTaskStatus(taskId, STEP_WORD_PROCESSING, "开始处理Word文档", 0);
-                documentService.processWordDocuments(task);
-                updateTaskStatus(taskId, STEP_WORD_PROCESSING, "Word文档处理完成", 100);
-
-                updateTaskStatus(taskId, STEP_EXCEL_PROCESSING, "开始处理Excel文档", 0);
-                processExcelDocuments(task);
-                updateTaskStatus(taskId, STEP_EXCEL_PROCESSING, "Excel文档处理完成", 100);
-
-                List<ExcelField> fields = fieldRepository.findByTask(task);
-                updateTaskStatus(taskId, STEP_FIELD_CLASSIFICATION, "开始字段分类", 0);
-                String classificationResult = aiService.classifyExcelFields(fields);
-                JsonNode classificationNode = objectMapper.readTree(classificationResult);
-                JsonNode categoriesNode = classificationNode.get("categories");
-                updateTaskStatus(taskId, STEP_FIELD_CLASSIFICATION, "字段分类完成", 100);
-
-                // 过滤选中的分类
-                List<JsonNode> selectedCategoryNodes = new ArrayList<>();
-                for (JsonNode categoryNode : categoriesNode) {
-                    String categoryName = categoryNode.get("categoryName").asText();
-                    if (selectedCategories.contains(categoryName)) {
-                        selectedCategoryNodes.add(categoryNode);
-                    }
-                }
-
-                List<String> wordChunks = documentService.getWordChunksContent(task);
-                int totalCategories = selectedCategoryNodes.size();
-                int processedCategories = 0;
-
-                for (JsonNode categoryNode : selectedCategoryNodes) {
-                    String categoryName = categoryNode.get("categoryName").asText();
-                    String categoryDescription = categoryNode.get("description").asText();
-                    JsonNode fieldsNode = categoryNode.get("fields");
-
-                    updateTaskStatus(taskId, STEP_CATEGORY_ANALYSIS, 
-                            "分析分类: " + categoryName, 
-                            (int) ((double) processedCategories / totalCategories * 100));
-
-                    // 分析每个分类的规则
-                    String relevanceResult = aiService.evaluateCategoryRelevance(categoryNode, wordChunks);
-                    JsonNode relevanceNode = objectMapper.readTree(relevanceResult);
-                    String relevantText = relevanceNode.get("relevantText").asText();
-                    
-                    String rulesResult = aiService.extractCategoryRules(
-                            categoryNode, relevantText);
-                    JsonNode rulesNode = objectMapper.readTree(rulesResult);
-
-                    // 保存分类规则
-                    saveCategoryRules(task, categoryNode, rulesNode);
-
-                    processedCategories++;
-                }
-
-                updateTaskStatus(taskId, STEP_CATEGORY_ANALYSIS, "分类分析完成", 100);
-
-                // 生成最终结果
-                updateTaskStatus(taskId, STEP_RESULT_GENERATION, "生成分析结果", 0);
-                AnalysisResult result = generateAnalysisResult(task);
-                updateTaskStatus(taskId, STEP_RESULT_GENERATION, "分析完成", 100);
-
-                return result;
-            } catch (Exception e) {
-                logger.error("分析任务失败: " + taskId, e);
-                throw new RuntimeException("分析任务失败: " + e.getMessage(), e);
-            }
-        });
+    /**
+     * 获取任务日志
+     */
+    public List<Map<String, Object>> getTaskLogs(String taskId) {
+        Map<String, Object> progress = taskProgressMap.get(taskId);
+        if (progress != null) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> logs = (List<Map<String, Object>>) progress.get("detailedLogs");
+            return logs;
+        }
+        return new ArrayList<>();
     }
 } 

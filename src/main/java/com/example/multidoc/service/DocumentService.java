@@ -114,6 +114,7 @@ public class DocumentService {
                 // 保存文档块
                 for (WordChunk chunk : chunks) {
                     chunk.setTask(task);
+                    chunk.setSourceFile(file.getName()); // 设置源文件名
                     wordChunkRepository.save(chunk);
                 }
             } catch (Exception e) {

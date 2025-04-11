@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @Controller
-@RequestMapping("/tasks")
+@RequestMapping("/task")
 public class TaskProgressController {
 
     @Autowired
@@ -24,12 +24,14 @@ public class TaskProgressController {
         model.addAttribute("task", task);
         model.addAttribute("progress", progress);
         
-        return "task-progress";
+        return "task/progress";
     }
 
     @GetMapping("/api/{taskId}/progress")
     @ResponseBody
     public Map<String, Object> getProgress(@PathVariable String taskId) {
-        return analysisService.getTaskProgress(taskId);
+        Map<String, Object> progress = analysisService.getTaskProgress(taskId);
+        progress.put("logs", analysisService.getTaskLogs(taskId));
+        return progress;
     }
 } 

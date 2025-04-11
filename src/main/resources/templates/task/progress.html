@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="layout/base :: layout(~{::content})">
+<head>
+    <title th:text="${task.name} + ' - 任务进度'">任务进度</title>
+</head>
+<body>
+    <div th:fragment="content" class="container">
+        <!-- 面包屑导航 -->
+        <nav aria-label="breadcrumb" class="mt-4">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">首页</a></li>
+                <li class="breadcrumb-item active" aria-current="page" th:text="${task.name}">任务名称</li>
+            </ol>
+        </nav>
+
+        <!-- 任务信息 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title" th:text="${task.name}">任务名称</h5>
+                <p class="card-text">
+                    <small class="text-muted">
+                        创建时间：<span th:text="${#dates.format(task.createTime, 'yyyy-MM-dd HH:mm:ss')}">创建时间</span>
+                    </small>
+                </p>
+                <div class="progress mb-3">
+                    <div class="progress-bar" role="progressbar" 
+                         th:style="'width: ' + ${task.progress} + '%;'"
+                         th:attr="aria-valuenow=${task.progress}"
+                         th:text="${task.progress} + '%'">0%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 进度步骤 -->
+        <div class="progress-steps">
+            <div class="step" th:classappend="${task.progress >= 20 ? 'completed' : ''}">
+                <div class="step-number">1</div>
+                <div class="step-title">Excel文档处理</div>
+                <div class="step-description">0-20%</div>
+            </div>
+            <div class="step" th:classappend="${task.progress >= 40 ? 'completed' : ''}">
+                <div class="step-number">2</div>
+                <div class="step-title">字段分类</div>
+                <div class="step-description">20-40%</div>
+            </div>
+            <div class="step" th:classappend="${task.progress >= 60 ? 'completed' : ''}">
+                <div class="step-number">3</div>
+                <div class="step-title">Word文档处理</div>
+                <div class="step-description">40-60%</div>
+            </div>
+            <div class="step" th:classappend="${task.progress >= 80 ? 'completed' : ''}">
+                <div class="step-number">4</div>
+                <div class="step-title">分类分析</div>
+                <div class="step-description">60-80%</div>
+            </div>
+            <div class="step" th:classappend="${task.progress >= 90 ? 'completed' : ''}">
+                <div class="step-number">5</div>
+                <div class="step-title">规则提取</div>
+                <div class="step-description">80-90%</div>
+            </div>
+            <div class="step" th:classappend="${task.progress == 100 ? 'completed' : ''}">
+                <div class="step-number">6</div>
+                <div class="step-title">结果生成</div>
+                <div class="step-description">90-100%</div>
+            </div>
+        </div>
+
+        <!-- 处理日志 -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">处理日志</h5>
+            </div>
+            <div class="card-body">
+                <div class="log-container">
+                    <div class="log-entry" th:each="log : ${task.logs}">
+                        <div class="log-time" th:text="${#dates.format(log.timestamp, 'yyyy-MM-dd HH:mm:ss')}">时间</div>
+                        <div class="log-message" th:text="${log.message}">日志消息</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script th:inline="javascript">
+        // 自动更新进度
+        function refreshProgress() {
+            fetch('/api/task/' + /*[[${task.id}]]*/ + '/progress')
+                .then(response => response.json())
+                .then(data => {
+                    updateProgress(/*[[${task.id}]]*/, data.progress);
+                    
+                    // 更新步骤状态
+                    document.querySelectorAll('.step').forEach((step, index) => {
+                        const progress = data.progress;
+                        const thresholds = [20, 40, 60, 80, 90, 100];
+                        if (progress >= thresholds[index]) {
+                            step.classList.add('completed');
+                        } else {
+                            step.classList.remove('completed');
+                        }
+                    });
+                    
+                    // 如果任务完成，跳转到结果页面
+                    if (data.progress === 100) {
+                        window.location.href = '/task/' + /*[[${task.id}]]*/ + '/result';
+                    } else {
+                        setTimeout(refreshProgress, 5000);
+                    }
+                });
+        }
+        
+        // 页面加载完成后开始更新进度
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshProgress();
+        });
+    </script>
+</body>
+</html> 

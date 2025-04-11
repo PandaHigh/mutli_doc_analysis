@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="layout/base :: head" />
+</head>
+<body>
+    <th:block th:replace="layout/base :: navbar" />
+    
+    <div class="container mt-4">
+        <div class="row mb-4">
+            <div class="col">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/">任务列表</a></li>
+                        <li class="breadcrumb-item active" th:text="${task.taskName}">任务详情</li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
+
+        <!-- 任务基本信息 -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h3 th:text="${task.taskName}">任务名称</h3>
+                        <p class="text-muted">
+                            创建时间：<span th:text="${#temporals.format(task.createdTime, 'yyyy-MM-dd HH:mm')}">2024-04-11 10:00</span>
+                        </p>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <span class="badge" th:classappend="${task.status.name() == 'COMPLETED' ? 'bg-success' : (task.status.name() == 'FAILED' ? 'bg-danger' : 'bg-primary')}"
+                              th:text="${task.status.name()}">状态</span>
+                    </div>
+                </div>
+
+                <!-- 进度条 -->
+                <div th:if="${task.status.name() == 'PROCESSING'}" class="progress mt-3">
+                    <div th:id="'progress-' + ${task.id}" class="progress-bar progress-bar-striped progress-bar-animated"
+                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                <p th:id="'progress-text-' + ${task.id}" class="small text-muted mt-2" 
+                   th:if="${task.status.name() == 'PROCESSING'}">处理中...</p>
+            </div>
+        </div>
+
+        <!-- 分类选择 -->
+        <div th:if="${task.status.name() == 'WAITING_FOR_SELECTION'}" class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">选择需要分析的分类</h5>
+            </div>
+            <div class="card-body">
+                <form id="categoryForm">
+                    <div id="categoryList" class="mb-3">
+                        <!-- 分类列表将通过JavaScript动态加载 -->
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check"></i> 确认选择并继续分析
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 分析结果 -->
+        <div th:if="${task.status.name() == 'COMPLETED' and result != null}" class="row">
+            <!-- Excel字段概况 -->
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Excel字段概况</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>字段名称</th>
+                                        <th>描述</th>
+                                        <th>分类</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fieldTable">
+                                    <!-- 字段列表将通过JavaScript动态加载 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 字段关系图 -->
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">字段关系图</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="relationshipGraph" style="height: 600px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 规则列表 -->
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">提取的规则</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="accordion" id="ruleAccordion">
+                            <!-- 规则列表将通过JavaScript动态加载 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <th:block th:replace="layout/base :: scripts" />
+    <!-- ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script th:inline="javascript">
+        const task = /*[[${task}]]*/ {};
+        const result = /*[[${result}]]*/ null;
+
+        // 初始化页面
+        document.addEventListener('DOMContentLoaded', function() {
+            if (task.status === 'PROCESSING') {
+                updateProgress(task.id);
+            } else if (task.status === 'WAITING_FOR_SELECTION') {
+                loadCategories();
+            } else if (task.status === 'COMPLETED' && result) {
+                loadAnalysisResult();
+            }
+        });
+
+        // 加载分类选择
+        function loadCategories() {
+            const resultJson = JSON.parse(result.resultJson);
+            const categories = resultJson.categories || [];
+            const categoryList = document.getElementById('categoryList');
+
+            categories.forEach((category, index) => {
+                const div = document.createElement('div');
+                div.className = 'form-check mb-2';
+                div.innerHTML = `
+                    <input class="form-check-input" type="checkbox" value="${category.categoryName}" 
+                           id="category${index}" name="selectedCategories">
+                    <label class="form-check-label" for="category${index}">
+                        <strong>${category.categoryName}</strong>
+                        <p class="text-muted small mb-0">${category.description}</p>
+                        <p class="text-muted small">包含 ${category.fields.length} 个字段</p>
+                    </label>
+                `;
+                categoryList.appendChild(div);
+            });
+
+            // 处理分类选择表单提交
+            document.getElementById('categoryForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const selectedCategories = Array.from(this.querySelectorAll('input[name="selectedCategories"]:checked'))
+                    .map(input => input.value);
+
+                if (selectedCategories.length === 0) {
+                    alert('请至少选择一个分类');
+                    return;
+                }
+
+                const submitBtn = this.querySelector('button[type="submit"]');
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 处理中...';
+
+                $.ajax({
+                    url: `/api/tasks/${task.id}/analyze`,
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ selectedCategories }),
+                    success: function() {
+                        location.reload();
+                    },
+                    error: function(xhr) {
+                        alert('分析失败：' + xhr.responseText);
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '确认选择并继续分析';
+                    }
+                });
+            });
+        }
+
+        // 加载分析结果
+        function loadAnalysisResult() {
+            const resultJson = JSON.parse(result.resultJson);
+            
+            // 加载字段表格
+            loadFieldTable(resultJson.fields);
+            
+            // 加载关系图
+            loadRelationshipGraph(resultJson.relations);
+            
+            // 加载规则列表
+            loadRules(resultJson.rules);
+        }
+
+        // 加载字段表格
+        function loadFieldTable(fields) {
+            const tbody = document.getElementById('fieldTable');
+            fields.forEach(field => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${field.name}</td>
+                    <td>${field.description}</td>
+                    <td><span class="badge bg-info">${field.category}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 加载关系图
+        function loadRelationshipGraph(relations) {
+            const graph = echarts.init(document.getElementById('relationshipGraph'));
+            
+            // 构建节点和边
+            const nodes = new Set();
+            const edges = [];
+            relations.forEach(relation => {
+                nodes.add(relation.source);
+                nodes.add(relation.target);
+                edges.push({
+                    source: relation.source,
+                    target: relation.target,
+                    value: relation.score,
+                    label: {
+                        show: true,
+                        formatter: '{c}'
+                    }
+                });
+            });
+
+            const option = {
+                title: {
+                    text: '字段关系图'
+                },
+                tooltip: {},
+                animationDurationUpdate: 1500,
+                animationEasingUpdate: 'quinticInOut',
+                series: [{
+                    type: 'graph',
+                    layout: 'force',
+                    data: Array.from(nodes).map(name => ({
+                        name: name,
+                        symbolSize: 50,
+                        draggable: true
+                    })),
+                    edges: edges,
+                    roam: true,
+                    label: {
+                        show: true,
+                        position: 'right'
+                    },
+                    force: {
+                        repulsion: 1000
+                    }
+                }]
+            };
+
+            graph.setOption(option);
+            window.addEventListener('resize', () => graph.resize());
+        }
+
+        // 加载规则列表
+        function loadRules(rules) {
+            const accordion = document.getElementById('ruleAccordion');
+            rules.forEach((rule, index) => {
+                const div = document.createElement('div');
+                div.className = 'accordion-item';
+                div.innerHTML = `
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#rule${index}">
+                            ${rule.field} - ${rule.type}规则
+                            <span class="badge bg-secondary ms-2">优先级 ${rule.priority}</span>
+                        </button>
+                    </h2>
+                    <div id="rule${index}" class="accordion-collapse collapse">
+                        <div class="accordion-body">
+                            <pre class="bg-light p-3 rounded">${rule.content}</pre>
+                        </div>
+                    </div>
+                `;
+                accordion.appendChild(div);
+            });
+        }
+    </script>
+</body>
+</html> 

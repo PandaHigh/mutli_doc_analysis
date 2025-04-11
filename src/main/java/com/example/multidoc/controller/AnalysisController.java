@@ -56,7 +56,7 @@ public class AnalysisController {
                 model.addAttribute("result", result);
             }
 
-            return "task-detail";
+            return "task/detail";
         } catch (Exception e) {
             model.addAttribute("error", e.getMessage());
             return "error";
@@ -72,10 +72,10 @@ public class AnalysisController {
             if (task.getStatus() == AnalysisTask.TaskStatus.COMPLETED) {
                 AnalysisResult result = analysisService.getResultByTaskId(id);
                 model.addAttribute("result", result);
-                return "task-result";
+                return "task/result";
             } else {
                 model.addAttribute("error", "任务尚未完成，无法查看结果");
-                return "task-detail";
+                return "task/detail";
             }
         } catch (Exception e) {
             model.addAttribute("error", e.getMessage());
@@ -90,8 +90,9 @@ public class AnalysisController {
             redirectAttributes.addFlashAttribute("message", "任务已成功删除");
             return "redirect:/";
         } catch (Exception e) {
+            logger.error("删除任务失败: " + id, e);
             redirectAttributes.addFlashAttribute("error", "删除任务失败: " + e.getMessage());
-            return "redirect:/task/" + id;
+            return "redirect:/";
         }
     }
 
@@ -107,9 +108,9 @@ public class AnalysisController {
         }
     }
 
-    @GetMapping("/new-task")
+    @GetMapping("/task/new")
     public String newTaskForm() {
-        return "new-task";
+        return "task/new";
     }
 
     @PostMapping("/upload")
@@ -194,6 +195,11 @@ public class AnalysisController {
             @RequestParam("excelFiles") MultipartFile[] excelFiles) {
 
         try {
+            logger.info("接收到新任务请求: {}", taskName);
+            logger.info("Word文件数量: {}, Excel文件数量: {}", 
+                    wordFiles != null ? wordFiles.length : 0, 
+                    excelFiles != null ? excelFiles.length : 0);
+            
             // 保存上传的文件
             List<String> wordFilePaths = new ArrayList<>();
             List<String> excelFilePaths = new ArrayList<>();
@@ -202,6 +208,7 @@ public class AnalysisController {
                 if (!file.isEmpty()) {
                     String path = documentService.saveWordDocument(file);
                     wordFilePaths.add(path);
+                    logger.info("保存Word文件: {}", file.getOriginalFilename());
                 }
             }
 
@@ -209,20 +216,23 @@ public class AnalysisController {
                 if (!file.isEmpty()) {
                     String path = documentService.saveExcelDocument(file);
                     excelFilePaths.add(path);
+                    logger.info("保存Excel文件: {}", file.getOriginalFilename());
                 }
             }
 
             // 创建分析任务
             AnalysisTask task = analysisService.createTask(taskName, wordFilePaths, excelFilePaths);
+            logger.info("任务创建成功: {}", task.getId());
 
             // 启动异步分析
             CompletableFuture<AnalysisResult> future = analysisService.executeAnalysisTask(task.getId());
+            logger.info("异步分析任务已启动");
 
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(Map.of(
                             "taskId", task.getId(),
-                            "status", "created",
-                            "message", "Analysis started"
+                            "status", task.getStatus().name(),
+                            "message", "分析任务已创建并开始处理"
                     ));
 
         } catch (Exception e) {
@@ -293,6 +303,19 @@ public class AnalysisController {
             logger.error("获取进度失败", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/api/task/{id}")
+    @ResponseBody
+    public ResponseEntity<?> apiDeleteTask(@PathVariable String id) {
+        try {
+            analysisService.deleteTask(id);
+            return ResponseEntity.ok(Map.of("message", "任务已成功删除"));
+        } catch (Exception e) {
+            logger.error("API删除任务失败: " + id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 } 

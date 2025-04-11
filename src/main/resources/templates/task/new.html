@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:replace="layout/base :: head" />
+</head>
+<body>
+    <th:block th:replace="layout/base :: navbar" />
+    
+    <div class="container mt-4">
+        <div class="row mb-4">
+            <div class="col">
+                <h2>新建分析任务</h2>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <form id="taskForm" method="post" enctype="multipart/form-data">
+                    <div class="mb-4">
+                        <label for="taskName" class="form-label">任务名称</label>
+                        <input type="text" class="form-control" id="taskName" name="taskName" required>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">Word文档</label>
+                        <div class="upload-area" id="wordUploadArea">
+                            <i class="fas fa-file-word fa-2x mb-2"></i>
+                            <p class="mb-2">点击或拖拽Word文档到此处</p>
+                            <p class="text-muted small">支持多个.docx文件</p>
+                            <input type="file" id="wordFiles" name="wordFiles" multiple accept=".docx" 
+                                   class="d-none" required>
+                        </div>
+                        <div id="wordFileList" class="mt-2"></div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">Excel表格</label>
+                        <div class="upload-area" id="excelUploadArea">
+                            <i class="fas fa-file-excel fa-2x mb-2"></i>
+                            <p class="mb-2">点击或拖拽Excel表格到此处</p>
+                            <p class="text-muted small">支持多个.xlsx文件</p>
+                            <input type="file" id="excelFiles" name="excelFiles" multiple accept=".xlsx" 
+                                   class="d-none" required>
+                        </div>
+                        <div id="excelFileList" class="mt-2"></div>
+                    </div>
+
+                    <div class="text-end">
+                        <a href="/" class="btn btn-outline-secondary me-2">取消</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-play"></i> 开始分析
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <th:block th:replace="layout/base :: scripts" />
+    <script>
+        // 文件上传区域点击处理
+        function setupUploadArea(areaId, inputId, listId) {
+            const area = document.getElementById(areaId);
+            const input = document.getElementById(inputId);
+            const list = document.getElementById(listId);
+
+            area.addEventListener('click', () => input.click());
+            
+            area.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                area.style.borderColor = '#0d6efd';
+                area.style.background = '#e9ecef';
+            });
+
+            area.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                area.style.borderColor = '#ddd';
+                area.style.background = '#f8f9fa';
+            });
+
+            area.addEventListener('drop', (e) => {
+                e.preventDefault();
+                area.style.borderColor = '#ddd';
+                area.style.background = '#f8f9fa';
+                input.files = e.dataTransfer.files;
+                updateFileList(input.files, list);
+            });
+
+            input.addEventListener('change', () => {
+                updateFileList(input.files, list);
+            });
+        }
+
+        // 更新文件列表显示
+        function updateFileList(files, listElement) {
+            listElement.innerHTML = '';
+            Array.from(files).forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'alert alert-info alert-dismissible fade show';
+                item.innerHTML = `
+                    <i class="fas fa-file me-2"></i>
+                    ${file.name}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                listElement.appendChild(item);
+            });
+        }
+
+        // 表单提交处理
+        document.getElementById('taskForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            // 显示加载提示
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 处理中...';
+
+            $.ajax({
+                url: '/api/tasks',
+                method: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    window.location.href = '/task/' + response.taskId;
+                },
+                error: function(xhr) {
+                    alert('创建任务失败：' + xhr.responseText);
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                }
+            });
+        });
+
+        // 初始化上传区域
+        setupUploadArea('wordUploadArea', 'wordFiles', 'wordFileList');
+        setupUploadArea('excelUploadArea', 'excelFiles', 'excelFileList');
+    </script>
+</body>
+</html> 

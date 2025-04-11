@@ -28,6 +28,12 @@ public class FieldRelation {
     @Column(name = "relation_description", columnDefinition = "TEXT")
     private String relationDescription;
 
+    @Column(name = "relation_type")
+    private String relationType;
+
+    @Column(name = "confidence")
+    private Double confidence;
+
     // Default constructor
     public FieldRelation() {
     }
@@ -79,5 +85,21 @@ public class FieldRelation {
 
     public void setRelationDescription(String relationDescription) {
         this.relationDescription = relationDescription;
+    }
+
+    public String getRelationType() {
+        return relationType;
+    }
+
+    public void setRelationType(String relationType) {
+        this.relationType = relationType;
+    }
+
+    public Double getConfidence() {
+        return confidence;
+    }
+
+    public void setConfidence(Double confidence) {
+        this.confidence = confidence;
     }
 } 
