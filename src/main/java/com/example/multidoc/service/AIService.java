@@ -1,10 +1,8 @@
 package com.example.multidoc.service;
 
 import com.example.multidoc.model.ExcelField;
-import com.example.multidoc.model.FieldRelation;
 import com.example.multidoc.model.FieldRule;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.ChatClient;
@@ -17,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,169 +28,55 @@ public class AIService {
     private ChatClient chatClient;
     
     private final ObjectMapper objectMapper = new ObjectMapper();
-    
+
+
     /**
-     * 分析Excel字段结构
-     * @param markdownTable Excel表格的Markdown表示
-     * @return 字段名称和描述的解析结果
+     * 编译和汇总规则
+     * @param rules 字段规则列表
+     * @return 汇总后的规则文本
      */
-    public String analyzeExcelStructure(String markdownTable) {
-        String systemPrompt = "你是一个专业的数据分析助手，擅长分析表格结构。请分析以下Excel表格的结构(Markdown格式)，提取所有的列标题和对应的描述。";
-        String userPrompt = "请列出以下Excel表格中所有的列标题及其描述：\n\n" + markdownTable;
+    public String compileRules(List<FieldRule> rules) {
+        String systemPrompt = "你是一个专业的规则整合专家，能够合并和优化各种规则。";
         
-        return executePrompt(systemPrompt, userPrompt);
-    }
-    
-    /**
-     * 从Word文档块中提取与特定字段相关的文本
-     * @param fieldName 字段名称
-     * @param fieldDescription 字段描述
-     * @param wordChunks Word文档块列表
-     * @return 与字段相关的文本
-     */
-    public String extractRelevantText(String fieldName, String fieldDescription, List<String> wordChunks) {
-        String systemPrompt = "你是一个专业的文本分析助手，能够从大量文本中提取与特定主题相关的内容。";
+        StringBuilder rulesText = new StringBuilder();
         
-        logger.info("开始为字段 '{}' 从 {} 个文档块中提取相关文本", fieldName, wordChunks.size());
-        
-        // 使用线程安全的StringBuilder来收集结果
-        StringBuilder relevantTextBuilder = new StringBuilder();
-        
-        // 使用并行流处理文档块
-        wordChunks.parallelStream().forEach(chunk -> {
-            String userPrompt = String.format(
-                "请从以下文本中找出与'%s'字段相关的所有描述、规则、指导和说明。如果字段描述为：'%s'。" +
-                "仅返回相关文本，如果没有相关内容，请返回'无相关内容'。\n\n%s", 
-                fieldName, fieldDescription, chunk
-            );
-            
-            String response = executePrompt(systemPrompt, userPrompt);
-            
-            if (response != null && !response.isEmpty() && !response.contains("无相关内容")) {
-                // 使用synchronized块来确保线程安全
-                synchronized (relevantTextBuilder) {
-                    relevantTextBuilder.append(response).append("\n\n");
-                }
-            }
-        });
-        
-        String result = relevantTextBuilder.toString().trim();
-        logger.info("字段 '{}' 提取完成，找到 {} 个相关内容", fieldName, result.isEmpty() ? 0 : result.split("\n\n").length);
-        
-        return result;
-    }
-    
-    /**
-     * 评估字段之间的相关性
-     * @param sourceField 源字段
-     * @param targetField 目标字段
-     * @param sourceFieldText 源字段相关文本
-     * @param targetFieldText 目标字段相关文本
-     * @return 相关性评分JSON
-     */
-    public String evaluateFieldsRelation(ExcelField sourceField, ExcelField targetField, 
-                                       String sourceFieldText, String targetFieldText) {
-        String systemPrompt = "你是一个专业的数据关系分析专家，能够分析不同数据字段之间的关系。请评估以下两个字段之间的相关性，并给出0-1之间的相关性评分。";
-        
-        String userPrompt = String.format(
-            "请分析以下两个字段之间的相关性：\n\n" +
-            "字段1：%s\n描述：%s\n相关文本：%s\n\n" +
-            "字段2：%s\n描述：%s\n相关文本：%s\n\n" +
-            "请以JSON格式返回结果，包括相关性评分(0-1)和关系描述。格式如下：\n" +
-            "{\n  \"score\": 0.75,\n  \"description\": \"这两个字段有较强的相关性，因为...\"\n}",
-            sourceField.getFieldName(), sourceField.getDescription(), sourceFieldText,
-            targetField.getFieldName(), targetField.getDescription(), targetFieldText
-        );
-        
-        return executePrompt(systemPrompt, userPrompt);
-    }
-    
-    /**
-     * 提取字段规则
-     * @param field 字段信息
-     * @param fieldText 字段相关文本
-     * @param relatedFields 相关字段列表
-     * @return 字段规则JSON
-     */
-    public String extractFieldRules(ExcelField field, String fieldText, List<FieldRelation> relatedFields) {
-        String systemPrompt = "你是一个专业的规则提取专家，能够从文本中识别出显式和隐含的规则。";
-        
-        StringBuilder relatedFieldsText = new StringBuilder();
-        for (FieldRelation relation : relatedFields) {
-            ExcelField relatedField = relation.getTargetField();
-            relatedFieldsText.append(String.format(
-                "相关字段: %s (相关性: %.2f)\n描述: %s\n\n",
-                relatedField.getFieldName(), relation.getRelationScore(), relatedField.getDescription()
+        // 直接处理所有规则，不按字段名分组
+        for (FieldRule rule : rules) {
+            rulesText.append(String.format(
+                "- 字段: %s\n" +
+                "  类型: %s\n" +
+                "  规则: %s\n\n",
+                    rule.getFieldNames(),
+                rule.getRuleType() == FieldRule.RuleType.EXPLICIT ? "显式" : "隐含",
+                rule.getRuleContent()
             ));
         }
         
         String userPrompt = String.format(
-            "请从以下文本中提取关于'%s'字段的显式规则和隐含规则。\n\n" +
-            "字段描述: %s\n\n" +
-            "相关字段信息:\n%s\n\n" +
-            "字段相关文本:\n%s\n\n" +
-            "请以JSON格式返回结果，分别列出显式规则和隐含规则。格式如下:\n" +
-            "{\n  \"explicitRules\": [\n    {\"rule\": \"规则1\", \"priority\": 3},\n    {\"rule\": \"规则2\", \"priority\": 2}\n  ],\n" +
-            "  \"implicitRules\": [\n    {\"rule\": \"隐含规则1\", \"priority\": 2},\n    {\"rule\": \"隐含规则2\", \"priority\": 1}\n  ]\n}",
-            field.getFieldName(), field.getDescription(), relatedFieldsText.toString(), fieldText
-        );
-        
-        return executePrompt(systemPrompt, userPrompt);
-    }
-    
-    /**
-     * 编译和汇总规则
-     * @param fieldRulesMap 字段规则映射
-     * @return 汇总后的规则JSON
-     */
-    public String compileRules(Map<String, List<FieldRule>> fieldRulesMap) {
-        String systemPrompt = "你是一个专业的规则整合专家，能够合并和优化各种规则。";
-        
-        // 使用线程安全的StringBuilder来收集结果
-        StringBuilder rulesText = new StringBuilder();
-        
-        // 使用并行流处理规则
-        fieldRulesMap.entrySet().parallelStream().forEach(entry -> {
-            String fieldName = entry.getKey();
-            List<FieldRule> rules = entry.getValue();
-            
-            // 使用synchronized块来确保线程安全
-            synchronized (rulesText) {
-                rulesText.append("字段: ").append(fieldName).append("\n");
-                rulesText.append("规则:\n");
-                
-                for (FieldRule rule : rules) {
-                    rulesText.append(String.format(
-                        "- %s规则 (优先级: %d): %s\n",
-                        rule.getRuleType() == FieldRule.RuleType.EXPLICIT ? "显式" : "隐含",
-                        rule.getPriority(),
-                        rule.getRuleContent()
-                    ));
-                }
-                
-                rulesText.append("\n");
-            }
-        });
-        
-        String userPrompt = String.format(
-            "请合并和优化以下字段规则，解决冲突，去除重复，并按照规则的重要性排序。\n\n%s\n\n" +
-            "请以JSON格式返回结果，按字段组织规则，并包含规则类型和优先级。",
+            "请合并和优化以下规则，解决冲突，去除重复。\n\n%s\n\n" +
+            "请以清晰的文本格式返回结果，包含以下内容：\n" +
+            "1. 每个规则需要包含：\n" +
+            "   - 字段名\n" +
+            "   - 规则类型（显式或隐含）\n" +
+            "   - 规则内容\n\n" +
+            "请确保规则清晰易读，格式统一。",
             rulesText.toString()
         );
         
-        return executePrompt(systemPrompt, userPrompt);
+        logger.info("开始编译和汇总规则，共 {} 条规则", rules.size());
+        String result = executePrompt(systemPrompt, userPrompt);
+        logger.info("规则编译完成，返回结果长度: {}", result.length());
+        return result;
     }
     
     /**
      * 生成最终分析报告
      * @param taskName 任务名称
-     * @param fields Excel字段列表
-     * @param relations 字段关系列表
+     * @param fields 生成最终分析报告
      * @param rules 字段规则列表
      * @return 分析报告JSON
      */
-    public String generateAnalysisReport(String taskName, List<ExcelField> fields, 
-                                        List<FieldRelation> relations, List<FieldRule> rules) {
+    public String generateAnalysisReport(String taskName, List<ExcelField> fields, List<FieldRule> rules) {
         String systemPrompt = "你是一个专业的报告生成专家，能够将复杂的分析结果整理成清晰的报告。";
         
         StringBuilder fieldsText = new StringBuilder();
@@ -202,212 +87,175 @@ public class AIService {
             ));
         }
         
-        StringBuilder relationsText = new StringBuilder();
-        for (FieldRelation relation : relations) {
-            relationsText.append(String.format(
-                "- %s -> %s: 相关性 %.2f\n",
-                relation.getSourceField().getFieldName(), 
-                relation.getTargetField().getFieldName(),
-                relation.getRelationScore()
-            ));
-        }
-        
         StringBuilder rulesText = new StringBuilder();
         for (FieldRule rule : rules) {
+            String fieldNamesStr;
+            try {
+                String[] fieldNames = objectMapper.readValue(rule.getFieldNames(), String[].class);
+                fieldNamesStr = String.join(", ", fieldNames);
+            } catch (Exception e) {
+                logger.warn("Failed to parse field names: {}, using raw value", rule.getFieldNames());
+                fieldNamesStr = rule.getFieldNames();
+            }
+            
             rulesText.append(String.format(
-                "- %s - %s规则 (优先级: %d): %s\n",
-                rule.getField().getFieldName(),
+                "- %s - %s规则: %s\n",
+                fieldNamesStr,
                 rule.getRuleType() == FieldRule.RuleType.EXPLICIT ? "显式" : "隐含",
-                rule.getPriority(),
                 rule.getRuleContent()
             ));
         }
         
         String userPrompt = String.format(
-            "请为分析任务'%s'生成一份详细的分析报告，包括以下内容:\n\n" +
-            "1. Excel字段概况:\n%s\n\n" +
-            "2. 字段间关系分析:\n%s\n\n" +
-            "3. 字段规则总结:\n%s\n\n" +
-            "请以JSON格式返回报告，包括摘要和详细分析。",
-            taskName, fieldsText.toString(), relationsText.toString(), rulesText.toString()
+            "请为报表分析任务'%s'生成一份详细的分析报告，包括以下内容:\n\n" +
+            "1. 总体概述：\n" +
+            "   - 分析任务的基本情况\n" +
+            "   - 处理的文件数量和类型\n" +
+            "   - 主要发现和结论\n\n" +
+            "2. 字段分析：\n%s\n\n" +
+            "3. 规则分析：\n%s\n\n" +
+            "4. 需要注意的问题：\n\n" +
+            "请以清晰、专业的语言撰写报告，确保内容完整、结构清晰。",
+            taskName, fieldsText.toString(), rulesText.toString()
         );
         
-        return executePrompt(systemPrompt, userPrompt);
-    }
-    
-    /**
-     * 对Excel字段进行分类
-     * @param fields Excel字段列表
-     * @return 分类结果JSON
-     */
-    public String classifyExcelFields(List<ExcelField> fields) {
-        String systemPrompt = "你是一个专业的数据分类专家，能够根据字段名称和描述对Excel字段进行合理的分类。";
+        logger.info("开始生成分析报告，任务: {}, 字段数: {}, 规则数: {}", 
+            taskName, fields.size(), rules.size());
+            
+        // 调用AI生成报告
+        String report = executePrompt(systemPrompt, userPrompt);
         
-        StringBuilder fieldsText = new StringBuilder();
-        for (ExcelField field : fields) {
-            fieldsText.append(String.format(
-                "- %s: %s\n",
-                field.getFieldName(), field.getDescription()
-            ));
-        }
-        
-        String userPrompt = String.format(
-            "请对以下Excel字段进行分类，每个分类应该包含相关的字段。\n\n" +
-            "字段列表:\n%s\n\n" +
-            "请以JSON格式返回分类结果，格式如下：\n" +
-            "{\n" +
-            "  \"categories\": [\n" +
-            "    {\n" +
-            "      \"categoryName\": \"分类名称\",\n" +
-            "      \"description\": \"分类描述\",\n" +
-            "      \"fields\": [\"字段1\", \"字段2\", ...]\n" +
-            "    },\n" +
-            "    ...\n" +
-            "  ]\n" +
-            "}",
-            fieldsText.toString()
-        );
-        
-        return executePrompt(systemPrompt, userPrompt);
-    }
-    
-    /**
-     * 评估分类相关性
-     */
-    public String evaluateCategoryRelevance(JsonNode category, List<String> wordChunks) {
+        // 将报告转换为JSON格式
         try {
-            String categoryName = category.get("categoryName").asText();
-            String categoryDescription = category.get("description").asText();
-            JsonNode fields = category.get("fields");
-
-            // 构建提示
-            StringBuilder prompt = new StringBuilder();
-            prompt.append("请评估以下分类与文档内容的相关性：\n\n");
-            prompt.append("分类名称：").append(categoryName).append("\n");
-            prompt.append("分类描述：").append(categoryDescription).append("\n");
-            prompt.append("包含字段：\n");
-            for (JsonNode field : fields) {
-                prompt.append("- ").append(field.get("fieldName").asText()).append("\n");
-            }
-            prompt.append("\n文档内容：\n");
-            for (String chunk : wordChunks) {
-                prompt.append(chunk).append("\n");
-            }
-            prompt.append("\n请评估该分类与文档内容的相关性，并返回JSON格式的结果：\n");
-            prompt.append("{\n");
-            prompt.append("  \"score\": 相关性分数（0-1之间）,\n");
-            prompt.append("  \"relevantText\": \"相关文本内容\"\n");
-            prompt.append("}");
-
-            // 改用ChatClient调用AI服务
-            String systemPrompt = "你是一个专业的分类相关性评估专家，能够评估分类与文档内容的相关程度。";
-            String response = executePrompt(systemPrompt, prompt.toString());
+            Map<String, Object> reportJson = new HashMap<>();
+            reportJson.put("summary", report);
             
-            // 验证JSON格式
-            objectMapper.readTree(response);
-            
-            return response;
+            return objectMapper.writeValueAsString(reportJson);
         } catch (Exception e) {
-            logger.error("评估分类相关性失败", e);
-            throw new RuntimeException("评估分类相关性失败: " + e.getMessage(), e);
+            logger.error("Failed to convert report to JSON", e);
+            return "{\"summary\": \"" + report + "\"}";
         }
     }
 
-    /**
-     * 提取分类规则
-     */
-    public String extractCategoryRules(JsonNode category, String relevantText) {
-        try {
-            String categoryName = category.get("categoryName").asText();
-            String categoryDescription = category.get("description").asText();
-            JsonNode fields = category.get("fields");
 
-            // 构建提示
-            StringBuilder prompt = new StringBuilder();
-            prompt.append("请根据以下信息提取分类规则：\n\n");
-            prompt.append("分类名称：").append(categoryName).append("\n");
-            prompt.append("分类描述：").append(categoryDescription).append("\n");
-            prompt.append("包含字段：\n");
-            for (JsonNode field : fields) {
-                prompt.append("- ").append(field.get("fieldName").asText()).append("\n");
-            }
-            prompt.append("\n相关文本：\n").append(relevantText).append("\n");
-            prompt.append("\n请提取该分类的规则，并返回JSON格式的结果：\n");
-            prompt.append("{\n");
-            prompt.append("  \"rules\": [\n");
-            prompt.append("    {\n");
-            prompt.append("      \"type\": \"规则类型（显式规则/隐含规则）\",\n");
-            prompt.append("      \"content\": \"规则内容\",\n");
-            prompt.append("      \"priority\": 优先级（1-3）\n");
-            prompt.append("    }\n");
-            prompt.append("  ]\n");
-            prompt.append("}");
-
-            // 改用ChatClient调用AI服务
-            String systemPrompt = "你是一个专业的规则提取专家，能够从文本中识别和提取规则。";
-            String response = executePrompt(systemPrompt, prompt.toString());
-            
-            // 验证JSON格式
-            objectMapper.readTree(response);
-            
-            return response;
-        } catch (Exception e) {
-            logger.error("提取分类规则失败", e);
-            throw new RuntimeException("提取分类规则失败: " + e.getMessage(), e);
-        }
-    }
     
     /**
      * 执行提示并获取响应
      */
-    private String executePrompt(String systemPrompt, String userPrompt) {
-        List<Message> messages = new ArrayList<>();
-        messages.add(new SystemMessage(systemPrompt));
-        messages.add(new UserMessage(userPrompt));
+    public String executePrompt(String systemPrompt, String userPrompt) {
+        int maxRetries = 5;
+        long initialDelay = 5000; // 5秒
+        long maxDelay = 60000; // 60秒
+        long currentDelay = initialDelay;
         
-        Prompt prompt = new Prompt(messages);
-        ChatResponse response = chatClient.call(prompt);
-        String content = response.getResult().getOutput().getContent();
-        
-        // 处理可能的 Markdown 格式的 JSON
-        if (content.startsWith("```json")) {
-            content = content.substring(content.indexOf("{"), content.lastIndexOf("}") + 1);
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                logger.debug("调用AI服务 (尝试 {}/{}), 系统提示长度: {}, 用户提示长度: {}", 
+                    attempt, maxRetries, systemPrompt.length(), userPrompt.length());
+                
+                List<Message> messages = new ArrayList<>();
+                messages.add(new SystemMessage(systemPrompt));
+                messages.add(new UserMessage(userPrompt));
+                
+                Prompt prompt = new Prompt(messages);
+                ChatResponse response = chatClient.call(prompt);
+                
+                if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
+                    throw new RuntimeException("AI服务返回空响应");
+                }
+                
+                String content = response.getResult().getOutput().getContent();
+                
+                if (content == null || content.trim().isEmpty()) {
+                    throw new RuntimeException("AI服务返回空内容");
+                }
+
+                // 检查响应内容是否被截断
+                if (content.contains("[truncated") || content.endsWith("...")) {
+                    logger.warn("AI服务返回的内容可能被截断，尝试重新获取完整响应");
+                    throw new RuntimeException("AI服务返回的内容被截断");
+                }
+                
+                // 处理可能的 Markdown 格式的 JSON
+                if (content.startsWith("```json")) {
+                    content = content.substring(content.indexOf("{"), content.lastIndexOf("}") + 1);
+                } else if (content.startsWith("```")) {
+                    content = content.substring(content.indexOf("\n") + 1, content.lastIndexOf("```"));
+                }
+
+                
+                logger.debug("AI服务调用成功，返回内容长度: {}", content.length());
+                return content;
+            } catch (Exception e) {
+                logger.warn("AI服务调用失败 (尝试 {}/{}): {}", attempt, maxRetries, e.getMessage());
+                
+                if (attempt == maxRetries) {
+                    logger.error("AI服务调用失败，已达到最大重试次数", e);
+                    throw new RuntimeException("AI服务调用失败，已达到最大重试次数: " + e.getMessage(), e);
+                }
+                
+                try {
+                    // 使用指数退避策略
+                    Thread.sleep(currentDelay);
+                    currentDelay = Math.min(currentDelay * 2, maxDelay);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("重试过程中断", ie);
+                }
+            }
         }
         
-        return content;
+        throw new RuntimeException("AI服务调用失败");
     }
 
     /**
      * 分析文本块内容
-     * @param content 文本内容
-     * @param fields 相关字段列表
-     * @return 分析结果JSON
      */
     public String analyzeChunkContent(String content, List<ExcelField> fields) {
-        try {
-            StringBuilder prompt = new StringBuilder();
-            prompt.append("请分析以下文本内容，找出与给定字段相关的信息：\n\n");
-            prompt.append("文本内容：\n").append(content).append("\n\n");
-            prompt.append("相关字段：\n");
-            for (ExcelField field : fields) {
-                prompt.append("- ").append(field.getFieldName())
-                      .append(": ").append(field.getDescription()).append("\n");
-            }
-            prompt.append("\n请返回JSON格式的分析结果，包含以下信息：\n");
-            prompt.append("1. 每个字段的相关内容\n");
-            prompt.append("2. 字段之间的关联关系\n");
-            prompt.append("3. 可能的规则或约束\n");
-
-            String systemPrompt = "你是一个专业的文本分析专家，能够从文档中提取结构化信息。";
-            String response = executePrompt(systemPrompt, prompt.toString());
-            
-            // 验证JSON格式
-            objectMapper.readTree(response);
-            
-            return response;
-        } catch (Exception e) {
-            logger.error("分析文本块内容失败", e);
-            throw new RuntimeException("分析文本块内容失败: " + e.getMessage(), e);
+        String systemPrompt = "你是一个专业的数据分析专家，能够从文本中提取字段规则。请确保返回的JSON格式正确，字段名称中的特殊字符（如点号、中文字符）需要正确处理。";
+        
+        StringBuilder fieldsText = new StringBuilder();
+        for (ExcelField field : fields) {
+            fieldsText.append(String.format(
+                "- %s (表名: %s): %s\n",
+                field.getFieldName(),
+                field.getTableName() != null ? field.getTableName() : "未指定",
+                field.getDescription() != null ? field.getDescription() : "无描述"
+            ));
         }
+        
+        String userPrompt = String.format(
+            "请分析以下文本内容，提取字段的规则，最主要的目标是发现字段之间的隐式规则。注意：\n" +
+            "1. 字段名称需要保持原样，不需要转义或替换\n" +
+            "2. 确保返回的JSON格式正确\n" +
+            "3. 规则类型必须是 EXPLICIT 或 IMPLICIT\n" +
+            "4. 每个规则必须包含字段名集合、规则类型和规则内容\n" +
+            "5. 可以包含置信度和表名（可选）\n" +
+            "6. 一个规则可以关联多个相关字段\n\n" +
+            "可用字段列表：\n%s\n\n" +
+            "文本内容：\n%s\n\n" +
+            "请返回JSON格式的分析结果，包含以下字段：\n" +
+            "1. rules: 数组，每个元素包含：\n" +
+            "   - fields: 字段名数组（必填，至少包含一个字段名）\n" +
+            "   - type: 规则类型（必填，必须是 EXPLICIT 或 IMPLICIT）\n" +
+            "   - content: 规则内容（必填）\n" +
+            "   - confidence: 置信度（可选，0-1之间的数值）\n" +
+            "   - tableName: 表名（可选）\n\n" +
+            "示例返回格式：\n" +
+            "{\n" +
+            "  \"rules\": [\n" +
+            "    {\n" +
+            "      \"fields\": [\"字段名1\", \"字段名2\"],\n" +
+            "      \"type\": \"EXPLICIT\",\n" +
+            "      \"content\": \"规则内容\",\n" +
+            "      \"confidence\": 0.95,\n" +
+            "      \"tableName\": \"表名\"\n" +
+            "    }\n" +
+            "  ]\n" +
+            "}",
+            fieldsText.toString(), content
+        );
+        
+        return executePrompt(systemPrompt, userPrompt);
     }
 } 

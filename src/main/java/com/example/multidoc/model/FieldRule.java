@@ -3,6 +3,7 @@ package com.example.multidoc.model;
 import jakarta.persistence.*;
 
 @Entity
+@Table(name = "field_rule")
 public class FieldRule {
     
     @Id
@@ -13,12 +14,8 @@ public class FieldRule {
     @JoinColumn(name = "task_id")
     private AnalysisTask task;
     
-    @ManyToOne
-    @JoinColumn(name = "field_id")
-    private ExcelField field;
-    
-    @Column(name = "field_name")
-    private String fieldName;
+    @Column(name = "field_names", columnDefinition = "TEXT")
+    private String fieldNames; // 存储字段名称的JSON数组
     
     @Enumerated(EnumType.STRING)
     @Column(name = "rule_type")
@@ -26,11 +23,6 @@ public class FieldRule {
     
     @Column(name = "rule_content", columnDefinition = "TEXT")
     private String ruleContent;
-    
-    @Column(columnDefinition = "TEXT")
-    private String rule;
-    
-    private Integer priority; // 规则优先级，越高越重要
     
     @Column(name = "confidence")
     private Double confidence;
@@ -61,20 +53,12 @@ public class FieldRule {
         this.task = task;
     }
 
-    public ExcelField getField() {
-        return field;
+    public String getFieldNames() {
+        return fieldNames;
     }
 
-    public void setField(ExcelField field) {
-        this.field = field;
-    }
-    
-    public String getFieldName() {
-        return fieldName;
-    }
-
-    public void setFieldName(String fieldName) {
-        this.fieldName = fieldName;
+    public void setFieldNames(String fieldNames) {
+        this.fieldNames = fieldNames;
     }
 
     public RuleType getRuleType() {
@@ -91,22 +75,6 @@ public class FieldRule {
 
     public void setRuleContent(String ruleContent) {
         this.ruleContent = ruleContent;
-    }
-    
-    public String getRule() {
-        return rule;
-    }
-
-    public void setRule(String rule) {
-        this.rule = rule;
-    }
-
-    public Integer getPriority() {
-        return priority;
-    }
-
-    public void setPriority(Integer priority) {
-        this.priority = priority;
     }
 
     public Double getConfidence() {

@@ -190,7 +190,7 @@ public class WordProcessor {
     }
 
     /**
-     * 处理Word文档并分块
+     * 处理Word文档并分块，确保在段落边界进行分块
      * @param file Word文档文件
      * @param chunkSize 文本块大小（字符数）
      * @return 文档块列表
@@ -204,50 +204,55 @@ public class WordProcessor {
             int currentSize = 0;
             int chunkIndex = 0;
             int startPosition = 0;
+            int totalPosition = 0;
 
             for (XWPFParagraph paragraph : document.getParagraphs()) {
                 String text = paragraph.getText().trim();
                 if (text.isEmpty()) continue;
 
-                if (currentSize + text.length() > chunkSize) {
+                // 如果当前段落加上当前块的大小超过chunkSize，且当前块不为空
+                if (currentSize + text.length() > chunkSize && currentSize > 0) {
                     // 保存当前块
-                    if (currentSize > 0) {
-                        WordChunk chunk = new WordChunk();
-                        chunk.setChunkIndex(chunkIndex++);
-                        chunk.setContent(currentChunk.toString());
-                        chunk.setStartPosition(startPosition);
-                        chunk.setEndPosition(startPosition + currentSize - 1);
-                        chunks.add(chunk);
-                        
-                        startPosition += currentSize;
-                        currentChunk = new StringBuilder();
-                        currentSize = 0;
-                    }
+                    WordChunk chunk = new WordChunk();
+                    chunk.setChunkIndex(chunkIndex++);
+                    chunk.setContent(currentChunk.toString());
+                    chunk.setStartPosition(startPosition);
+                    chunk.setEndPosition(startPosition + currentSize - 1);
+                    chunks.add(chunk);
+                    
+                    // 重置当前块
+                    startPosition = totalPosition;
+                    currentChunk = new StringBuilder();
+                    currentSize = 0;
+                }
 
-                    // 如果段落本身超过块大小，需要分割
-                    if (text.length() > chunkSize) {
-                        int pos = 0;
-                        while (pos < text.length()) {
-                            int endPos = Math.min(pos + chunkSize, text.length());
-                            String subText = text.substring(pos, endPos);
-                            
+                // 如果段落本身超过块大小，需要按句子分割
+                if (text.length() > chunkSize) {
+                    String[] sentences = text.split("(?<=[.!?。！？])");
+                    for (String sentence : sentences) {
+                        if (currentSize + sentence.length() > chunkSize && currentSize > 0) {
+                            // 保存当前块
                             WordChunk chunk = new WordChunk();
                             chunk.setChunkIndex(chunkIndex++);
-                            chunk.setContent(subText);
+                            chunk.setContent(currentChunk.toString());
                             chunk.setStartPosition(startPosition);
-                            chunk.setEndPosition(startPosition + subText.length() - 1);
+                            chunk.setEndPosition(startPosition + currentSize - 1);
                             chunks.add(chunk);
                             
-                            startPosition += subText.length();
-                            pos = endPos;
+                            // 重置当前块
+                            startPosition = totalPosition;
+                            currentChunk = new StringBuilder();
+                            currentSize = 0;
                         }
-                    } else {
-                        currentChunk.append(text).append("\n");
-                        currentSize = text.length() + 1;
+                        
+                        currentChunk.append(sentence).append("\n");
+                        currentSize += sentence.length() + 1;
+                        totalPosition += sentence.length() + 1;
                     }
                 } else {
                     currentChunk.append(text).append("\n");
                     currentSize += text.length() + 1;
+                    totalPosition += text.length() + 1;
                 }
             }
 

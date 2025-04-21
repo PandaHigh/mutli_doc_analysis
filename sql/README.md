@@ -77,4 +77,20 @@ DESCRIBE excel_files;
 2. 各种Repository中的泛型参数已更新
 3. 所有Service和Controller中的方法签名已更新，使用String而非Long作为ID参数
 
-这保证了系统能够正常运行，即使数据库结构发生了变化。 
+这保证了系统能够正常运行，即使数据库结构发生了变化。
+
+## ExcelField 表结构
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| id | BIGINT | 主键 |
+| task_id | BIGINT | 关联的任务ID |
+| table_name | VARCHAR(255) | 表名 |
+| field_name | VARCHAR(255) | 字段名 |
+| field_type | VARCHAR(50) | 字段类型 |
+| description | VARCHAR(1000) | 字段描述 |
+
+索引：
+- 主键：id
+- 外键：task_id 关联 analysis_task(id)
+- 唯一键：uk_task_table_field (task_id, table_name, field_name) 

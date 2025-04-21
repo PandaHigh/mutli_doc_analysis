@@ -1,10 +1,25 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <th:block th:replace="layout/base :: head" />
+    <title>任务详情</title>
+    <th:block th:replace="~{layout/base :: head}"></th:block>
+    <style>
+        .progress-container {
+            margin-top: 1rem;
+        }
+        .progress-text {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .step-info {
+             font-size: 0.9rem;
+             color: #495057;
+             margin-left: 10px;
+        }
+    </style>
 </head>
 <body>
-    <th:block th:replace="layout/base :: navbar" />
+    <th:block th:replace="~{layout/base :: navbar}"></th:block>
     
     <div class="container mt-4">
         <div class="row mb-4">
@@ -18,278 +33,667 @@
             </div>
         </div>
 
-        <!-- 任务基本信息 -->
+        <!-- Task Basic Info -->
         <div class="card mb-4">
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-6">
+                    <div class="col-md-8">
                         <h3 th:text="${task.taskName}">任务名称</h3>
                         <p class="text-muted">
-                            创建时间：<span th:text="${#temporals.format(task.createdTime, 'yyyy-MM-dd HH:mm')}">2024-04-11 10:00</span>
+                            创建时间：<span th:text="${#temporals.format(task.createdTime, 'yyyy-MM-dd HH:mm')}"></span>
+                            <span class="ms-3">ID: <code th:text="${task.id}"></code></span>
                         </p>
                     </div>
-                    <div class="col-md-6 text-end">
-                        <span class="badge" th:classappend="${task.status.name() == 'COMPLETED' ? 'bg-success' : (task.status.name() == 'FAILED' ? 'bg-danger' : 'bg-primary')}"
+                    <div class="col-md-4 text-end">
+                        <span class="badge fs-6 me-2" 
+                              th:classappend="${task.status.name() == 'COMPLETED' ? 'bg-success' : (task.status.name() == 'FAILED' ? 'bg-danger' : (task.status.name() == 'PROCESSING' ? 'bg-primary' : 'bg-secondary'))}"
                               th:text="${task.status.name()}">状态</span>
+                         <!-- Display Last Completed Step -->
+                         <span class="step-info" th:if="${task.lastCompletedStep != null}">
+                             ( <i class="fas fa-step-forward me-1"></i> <span th:text="${task.lastCompletedStep}"></span> )
+                         </span>
                     </div>
                 </div>
 
-                <!-- 进度条 -->
-                <div th:if="${task.status.name() == 'PROCESSING'}" class="progress mt-3">
-                    <div th:id="'progress-' + ${task.id}" class="progress-bar progress-bar-striped progress-bar-animated"
-                         role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                </div>
-                <p th:id="'progress-text-' + ${task.id}" class="small text-muted mt-2" 
-                   th:if="${task.status.name() == 'PROCESSING'}">处理中...</p>
-            </div>
-        </div>
-
-        <!-- 分类选择 -->
-        <div th:if="${task.status.name() == 'WAITING_FOR_SELECTION'}" class="card mb-4">
-            <div class="card-header">
-                <h5 class="card-title mb-0">选择需要分析的分类</h5>
-            </div>
-            <div class="card-body">
-                <form id="categoryForm">
-                    <div id="categoryList" class="mb-3">
-                        <!-- 分类列表将通过JavaScript动态加载 -->
+                <!-- Progress Bar & Status -->
+                <div th:if="${task.status.name() == 'PROCESSING' or task.status.name() == 'PENDING'}" class="progress-container mt-3">
+                    <div class="progress">
+                        <div th:id="'progress-bar-' + ${task.id}" 
+                             class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
                     </div>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-check"></i> 确认选择并继续分析
+                    <p th:id="'progress-text-' + ${task.id}" class="progress-text mt-2">正在初始化...</p>
+                </div>
+                 <div th:if="${task.status.name() == 'FAILED'}" class="alert alert-danger mt-3" role="alert">
+                     任务执行失败。
+                     <span th:if="${result != null and result.errorMessage != null}" th:text="${result.errorMessage}"></span>
+                     请检查日志或重试。
+                 </div>
+            </div>
+             <!-- Action Buttons -->
+             <div class="card-footer bg-light text-end">
+                 <form th:action="@{/task/{id}/cancel(id=${task.id})}" method="post" style="display: inline-block; margin-right: 5px;" 
+                       th:if="${task.status.name() == 'PROCESSING' or task.status.name() == 'PENDING'}">
+                     <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('确定要中止此任务吗？');">
+                         <i class="fas fa-stop-circle me-1"></i> 中止任务
+                     </button>
+                 </form>
+                 <form th:action="@{/task/{id}/resume(id=${task.id})}" method="post" style="display: inline-block; margin-right: 5px;" 
+                       th:if="${task.status.name() == 'FAILED'}">
+                     <button type="submit" class="btn btn-info btn-sm">
+                         <i class="fas fa-redo me-1"></i> 恢复任务
+                     </button>
+                 </form>
+                 <form th:action="@{/task/{id}/delete(id=${task.id})}" method="post" style="display: inline-block;">
+                     <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('确定要删除此任务及其所有数据吗？');">
+                          <i class="fas fa-trash-alt me-1"></i> 删除任务
                     </button>
                 </form>
             </div>
         </div>
 
-        <!-- 分析结果 -->
+        <!-- REMOVED Category Selection Section -->
+        <!-- <div th:if="${task.status.name() == 'WAITING_FOR_SELECTION'}" class="card mb-4"> ... </div> -->
+
+        <!-- Analysis Result (Shown when COMPLETED) -->
         <div th:if="${task.status.name() == 'COMPLETED' and result != null}" class="row">
-            <!-- Excel字段概况 -->
+            
+            <!-- Analysis Report -->
             <div class="col-md-12 mb-4">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Excel字段概况</h5>
+                        <h5 class="card-title mb-0">分析报告</h5>
                     </div>
                     <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>字段名称</th>
-                                        <th>描述</th>
-                                        <th>分类</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="fieldTable">
-                                    <!-- 字段列表将通过JavaScript动态加载 -->
-                                </tbody>
-                            </table>
-                        </div>
+                        <div id="analysisReport" class="markdown-content"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- 字段关系图 -->
+            <!-- Compiled Rules -->
             <div class="col-md-12 mb-4">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">字段关系图</h5>
+                        <h5 class="card-title mb-0">规则总结</h5>
                     </div>
                     <div class="card-body">
-                        <div id="relationshipGraph" style="height: 600px;"></div>
+                        <div id="compiledRules" class="markdown-content"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- 规则列表 -->
+            <!-- Original Field Rules -->
             <div class="col-md-12 mb-4">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">提取的规则</h5>
+                        <h5 class="card-title mb-0">原始规则</h5>
                     </div>
                     <div class="card-body">
-                        <div class="accordion" id="ruleAccordion">
-                            <!-- 规则列表将通过JavaScript动态加载 -->
+                        <div id="fieldRules" class="markdown-content"></div>
+                    </div>
+                </div>
+            </div>
+
+
+
+            <!-- Statistics -->
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">统计信息</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p>字段总数：<span id="fieldCount">0</span></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p>规则总数：<span id="ruleCount">0</span></p>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+        
+        <!-- Log Area -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">任务日志</h5>
+            </div>
+            <div class="card-body">
+                <pre id="logArea" style="max-height: 300px; overflow-y: scroll; background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 10px; font-size: 0.85rem;">加载日志中...</pre>
+            </div>
+        </div>
+
     </div>
 
-    <th:block th:replace="layout/base :: scripts" />
-    <!-- ECharts -->
+    <th:block th:replace="~{layout/base :: scripts}"></th:block>
+    <!-- ECharts for graph -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script th:inline="javascript">
+        /*<![CDATA[*/
         const task = /*[[${task}]]*/ {};
-        const result = /*[[${result}]]*/ null;
+        const result = /*[[${result}]]*/ null; // This might be null initially
+        const progressData = /*[[${progress}]]*/ {}; // Initial progress data
+        let progressIntervalId = null;
 
-        // 初始化页面
-        document.addEventListener('DOMContentLoaded', function() {
-            if (task.status === 'PROCESSING') {
-                updateProgress(task.id);
-            } else if (task.status === 'WAITING_FOR_SELECTION') {
-                loadCategories();
-            } else if (task.status === 'COMPLETED' && result) {
-                loadAnalysisResult();
+        // Function to update progress bar and text
+        function updateProgressDisplay(progressInfo) {
+            if (!progressInfo) {
+                console.warn('No progress info provided to updateProgressDisplay');
+                return;
             }
-        });
+            
+            const progressBar = document.getElementById('progress-bar-' + task.id);
+            const progressText = document.getElementById('progress-text-' + task.id);
+            const logArea = document.getElementById('logArea');
 
-        // 加载分类选择
-        function loadCategories() {
-            const resultJson = JSON.parse(result.resultJson);
-            const categories = resultJson.categories || [];
-            const categoryList = document.getElementById('categoryList');
+            if (progressBar && progressText) {
+                 const overallProgress = progressInfo.overallProgress || 0;
+                 const currentStepMessage = progressInfo.currentStepMessage || '等待中...';
+                 const currentStep = progressInfo.currentStep || '未知步骤';
+                 
+                 progressBar.style.width = overallProgress + '%';
+                 progressBar.setAttribute('aria-valuenow', overallProgress);
+                 progressBar.innerText = overallProgress + '%';
+                 progressText.innerText = `[${currentStep}] ${currentStepMessage} (${overallProgress}%)`;
+            }
+            
+            // Update logs
+            if (logArea) {
+                try {
+                    let logContent = '';
+                    if (progressInfo.detailedLogs) {
+                        if (Array.isArray(progressInfo.detailedLogs)) {
+                            logContent = progressInfo.detailedLogs
+                                .map(log => {
+                                    if (!log) return ''; // Skip null or undefined log entries
+                                    const timestamp = log.timestamp || '';
+                                    const step = log.step || '未知步骤';
+                                    const message = log.message || '';
+                                    const progress = log.progress !== undefined ? `(${log.progress}%)` : '';
+                                    return `${timestamp} [${step}] ${message} ${progress}`;
+                                })
+                                .filter(line => line.trim() !== '') // Remove empty lines
+                                .join('\n');
+                        } else if (typeof progressInfo.detailedLogs === 'string') {
+                            logContent = progressInfo.detailedLogs;
+                        } else {
+                            // Try to stringify the object
+                            try {
+                                logContent = JSON.stringify(progressInfo.detailedLogs, null, 2);
+                            } catch (e) {
+                                logContent = '日志数据格式无法解析';
+                            }
+                        }
+                    } else if (progressInfo.logs) {
+                        // Alternative property name
+                        if (Array.isArray(progressInfo.logs)) {
+                            logContent = progressInfo.logs
+                                .map(log => {
+                                    if (typeof log === 'string') return log;
+                                    if (!log) return ''; // Skip null or undefined log entries
+                                    const timestamp = log.timestamp || '';
+                                    const step = log.step || log.type || '未知步骤';
+                                    const message = log.message || log.content || '';
+                                    const progress = log.progress !== undefined ? `(${log.progress}%)` : '';
+                                    return `${timestamp} [${step}] ${message} ${progress}`;
+                                })
+                                .filter(line => line.trim() !== '') // Remove empty lines
+                                .join('\n');
+                        } else if (typeof progressInfo.logs === 'string') {
+                            logContent = progressInfo.logs;
+                        }
+                    }
+                    
+                    if (logContent.trim() === '') {
+                        // If we still don't have logs but have step info, create a minimal log entry
+                        if (progressInfo.currentStep) {
+                            const timestamp = new Date().toISOString().replace('T', ' ').substr(0, 19);
+                            const step = progressInfo.currentStep;
+                            const message = progressInfo.currentStepMessage || '处理中';
+                            const progress = progressInfo.overallProgress || 0;
+                            logContent = `${timestamp} [${step}] ${message} (${progress}%)`;
+                        } else {
+                            logContent = '暂无日志数据';
+                        }
+                    }
+                    
+                    // Update the log area
+                    logArea.textContent = logContent;
+                    // Scroll to bottom
+                    logArea.scrollTop = logArea.scrollHeight;
+                } catch (e) {
+                    console.error('Error updating logs:', e);
+                    logArea.textContent = '处理日志时发生错误: ' + e.message;
+                }
+            }
+        }
 
-            categories.forEach((category, index) => {
-                const div = document.createElement('div');
-                div.className = 'form-check mb-2';
-                div.innerHTML = `
-                    <input class="form-check-input" type="checkbox" value="${category.categoryName}" 
-                           id="category${index}" name="selectedCategories">
-                    <label class="form-check-label" for="category${index}">
-                        <strong>${category.categoryName}</strong>
-                        <p class="text-muted small mb-0">${category.description}</p>
-                        <p class="text-muted small">包含 ${category.fields.length} 个字段</p>
-                    </label>
-                `;
-                categoryList.appendChild(div);
+        // Function to fetch and update progress
+        function pollProgress(taskId) {
+            fetch(`/api/analysis/progress/${taskId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch progress: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(progressInfo => {
+                    updateProgressDisplay(progressInfo);
+                    
+                    // Check if task is still processing
+                    // Note: We rely on the server updating the task status eventually.
+                    // The progress endpoint might lag slightly behind actual task completion.
+                    fetch(`/api/task/${taskId}/status`) // Fetch latest task status
+                       .then(res => res.json())
+                       .then(taskStatusInfo => {
+                            if (taskStatusInfo.status !== 'PROCESSING' && taskStatusInfo.status !== 'PENDING') {
+                                console.log(`Task ${taskId} status is ${taskStatusInfo.status}. Stopping polling.`);
+                                clearInterval(progressIntervalId);
+                                progressIntervalId = null;
+                                // Reload page to show final result or error state
+                                 setTimeout(() => location.reload(), 1500); 
+                            }
+                       }).catch(err => {
+                            console.error('Error fetching task status:', err);
+                            // Optionally stop polling on status fetch error
+                       });
+                })
+                .catch(error => {
+                    console.error('Error fetching progress:', error);
+                    const progressText = document.getElementById('progress-text-' + task.id);
+                    if(progressText) progressText.innerText = '获取进度失败.';
+                    // Stop polling on error
+                    if (progressIntervalId) {
+                        clearInterval(progressIntervalId);
+                        progressIntervalId = null;
+                    }
             });
+        }
 
-            // 处理分类选择表单提交
-            document.getElementById('categoryForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                const selectedCategories = Array.from(this.querySelectorAll('input[name="selectedCategories"]:checked'))
-                    .map(input => input.value);
-
-                if (selectedCategories.length === 0) {
-                    alert('请至少选择一个分类');
-                    return;
+        // Load analysis result (if task is completed)
+        function loadAnalysisResult() {
+            if (!result || !result.resultJson) {
+                console.error('Result or resultJson is missing.');
+                return;
+            }
+            try {
+                console.log('Parsing result JSON:', result.resultJson); // Debug log
+                const resultData = JSON.parse(result.resultJson);
+                
+                // 显示编译后的规则
+                const compiledRulesElement = document.getElementById('compiledRules');
+                if (compiledRulesElement) {
+                    const rulesMarkdown = resultData.compiledRules || '未找到编译后的规则。';
+                    compiledRulesElement.innerHTML = marked.parse(rulesMarkdown);
                 }
 
-                const submitBtn = this.querySelector('button[type="submit"]');
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 处理中...';
-
-                $.ajax({
-                    url: `/api/tasks/${task.id}/analyze`,
-                    method: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({ selectedCategories }),
-                    success: function() {
-                        location.reload();
-                    },
-                    error: function(xhr) {
-                        alert('分析失败：' + xhr.responseText);
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = '确认选择并继续分析';
+                // 显示原始规则
+                const fieldRulesElement = document.getElementById('fieldRules');
+                if (fieldRulesElement) {
+                    const fieldRules = resultData.fieldRules || [];
+                    console.log('Field Rules Data:', fieldRules); // 添加调试日志
+                    
+                    if (!fieldRules || fieldRules.length === 0) {
+                        fieldRulesElement.innerHTML = marked.parse('未找到原始规则。');
+                        return;
                     }
-                });
-            });
+
+                    let fieldRulesMarkdown = '';
+                    
+                    try {
+                        // 直接遍历fieldRules数组
+                        fieldRules.forEach(rule => {
+                            if (!rule) return; // 跳过无效规则
+                            
+                            // 处理字段名
+                            let fieldNames = [];
+                            if (Array.isArray(rule.fieldNames)) {
+                                fieldNames = rule.fieldNames;
+                            } else if (typeof rule.fieldNames === 'string') {
+                                try {
+                                    const parsed = JSON.parse(rule.fieldNames);
+                                    fieldNames = Array.isArray(parsed) ? parsed : [rule.fieldNames];
+                                } catch (e) {
+                                    fieldNames = [rule.fieldNames];
+                                }
+                            } else if (rule.fieldName) {
+                                fieldNames = Array.isArray(rule.fieldName) ? rule.fieldName : [rule.fieldName];
+                            }
+                            
+                            // 过滤空字段名并去重
+                            fieldNames = [...new Set(fieldNames.filter(name => name && name.trim()))];
+                            
+                            // 处理规则类型
+                            const ruleType = rule.ruleType || rule.type || '未知类型';
+                            
+                            // 处理规则内容
+                            let content = rule.ruleContent || rule.content || '无内容';
+                            // 确保内容中的换行符被正确显示
+                            content = content.replace(/\n/g, '\n  ');
+                            
+                            // 生成规则展示
+                            fieldRulesMarkdown += `### 规则 ${fieldRules.indexOf(rule) + 1}\n\n`;
+                            fieldRulesMarkdown += `**字段**: ${fieldNames.join(', ')}\n\n`;
+                            fieldRulesMarkdown += `**类型**: ${ruleType}\n\n`;
+                            fieldRulesMarkdown += `**内容**: ${content}\n\n`;
+                            fieldRulesMarkdown += `---\n\n`;
+                        });
+                    } catch (e) {
+                        console.error('处理原始规则时出错:', e);
+                        fieldRulesMarkdown = '处理规则数据时出错: ' + e.message;
+                    }
+
+                    if (fieldRulesMarkdown === '') {
+                        fieldRulesMarkdown = '未找到有效的规则数据。';
+                    }
+
+                    // 添加样式
+                    const style = `
+                        <style>
+                            .markdown-content h3 {
+                                color: #2c3e50;
+                                margin-top: 1.5rem;
+                                margin-bottom: 1rem;
+                                padding-bottom: 0.5rem;
+                                border-bottom: 1px solid #eee;
+                            }
+                            .markdown-content p {
+                                margin-bottom: 0.5rem;
+                            }
+                            .markdown-content strong {
+                                color: #3498db;
+                                font-weight: 600;
+                            }
+                            .markdown-content hr {
+                                margin: 1.5rem 0;
+                                border: none;
+                                border-top: 1px solid #eee;
+                            }
+                            .markdown-content pre {
+                                background-color: #f8f9fa;
+                                padding: 1rem;
+                                border-radius: 4px;
+                                margin: 0.5rem 0;
+                                white-space: pre-wrap;
+                            }
+                        </style>
+                    `;
+                    
+                    fieldRulesElement.innerHTML = style + marked.parse(fieldRulesMarkdown);
+                }
+
+                // 显示分析报告
+                const reportElement = document.getElementById('analysisReport');
+                if (reportElement) {
+                    let markdownContent = '未找到分析报告。';
+                    
+                    try {
+                        if (resultData.report) {
+                            if (typeof resultData.report === 'string') {
+                                markdownContent = resultData.report;
+                            } else if (resultData.report.summary) {
+                                markdownContent = resultData.report.summary;
+                            } else if (resultData.report.content) {
+                                markdownContent = resultData.report.content;
+                            } else if (resultData.report.error) {
+                                markdownContent = `生成报告时出错：${resultData.report.error}`;
+                            } else {
+                                // 尝试将整个report转为字符串
+                                markdownContent = JSON.stringify(resultData.report, null, 2);
+                            }
+                        } else if (resultData.analysisReport) {
+                            // 尝试alternative属性名
+                            if (typeof resultData.analysisReport === 'string') {
+                                markdownContent = resultData.analysisReport;
+                            } else if (typeof resultData.analysisReport === 'object') {
+                                markdownContent = JSON.stringify(resultData.analysisReport, null, 2);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('处理分析报告时出错:', e);
+                        markdownContent = '处理分析报告时出错: ' + e.message;
+                    }
+                    
+                    reportElement.innerHTML = marked.parse(markdownContent);
+                }
+
+                // 显示统计信息
+                const fieldCountElement = document.getElementById('fieldCount');
+                if (fieldCountElement) {
+                    fieldCountElement.textContent = resultData.fieldCount || '0';
+                }
+
+                const ruleCountElement = document.getElementById('ruleCount');
+                if (ruleCountElement) {
+                    ruleCountElement.textContent = resultData.ruleCount || (resultData.fieldRules ? resultData.fieldRules.length : '0');
+                }
+
+            } catch (e) {
+                console.error('Error parsing result JSON:', e);
+                alert('加载分析结果失败：结果数据格式错误。详情请查看控制台。');
+            }
         }
 
-        // 加载分析结果
-        function loadAnalysisResult() {
-            const resultJson = JSON.parse(result.resultJson);
-            
-            // 加载字段表格
-            loadFieldTable(resultJson.fields);
-            
-            // 加载关系图
-            loadRelationshipGraph(resultJson.relations);
-            
-            // 加载规则列表
-            loadRules(resultJson.rules);
-        }
-
-        // 加载字段表格
+        // Load field table
         function loadFieldTable(fields) {
             const tbody = document.getElementById('fieldTable');
+             tbody.innerHTML = ''; // Clear existing rows
+             if (!fields || fields.length === 0) {
+                 tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">未找到字段信息。</td></tr>';
+                 return;
+             }
             fields.forEach(field => {
                 const tr = document.createElement('tr');
+                 // Assuming field structure might be {fieldName: '...', description: '...'} within the report
+                 const fieldName = field.fieldName || field.name || '未知字段';
+                 const description = field.description || '';
+                 // const category = field.category || 'N/A'; // Category removed
                 tr.innerHTML = `
-                    <td>${field.name}</td>
-                    <td>${field.description}</td>
-                    <td><span class="badge bg-info">${field.category}</span></td>
+                     <td>${escapeHtml(fieldName)}</td>
+                     <td>${escapeHtml(description)}</td>
+                     <!-- <td><span class="badge bg-info">${escapeHtml(category)}</span></td> -->
                 `;
                 tbody.appendChild(tr);
             });
         }
 
-        // 加载关系图
+        // Load relationship graph
         function loadRelationshipGraph(relations) {
-            const graph = echarts.init(document.getElementById('relationshipGraph'));
-            
-            // 构建节点和边
-            const nodes = new Set();
+            const graphChart = echarts.init(document.getElementById('relationshipGraph'));
+            const nodes = new Map();
             const edges = [];
-            relations.forEach(relation => {
-                nodes.add(relation.source);
-                nodes.add(relation.target);
+
+            relations.forEach(rel => {
+                const sourceName = rel.sourceField?.fieldName || rel.source || '未知源';
+                const targetName = rel.targetField?.fieldName || rel.target || '未知目标';
+                const relationType = rel.relationType || rel.type || '未知类型';
+                const confidence = rel.confidence !== undefined ? rel.confidence.toFixed(2) : 'N/A';
+
+                if (!nodes.has(sourceName)) nodes.set(sourceName, { name: sourceName, value: 1, category: 0 });
+                else nodes.get(sourceName).value++;
+                if (!nodes.has(targetName)) nodes.set(targetName, { name: targetName, value: 1, category: 0 });
+                else nodes.get(targetName).value++;
+
                 edges.push({
-                    source: relation.source,
-                    target: relation.target,
-                    value: relation.score,
+                    source: sourceName,
+                    target: targetName,
+                    value: confidence,
                     label: {
                         show: true,
-                        formatter: '{c}'
+                        formatter: `${relationType}\n(${confidence})` // Show type and confidence
+                    },
+                    lineStyle: {
+                        opacity: 0.9,
+                        width: 2,
+                        curveness: 0.1
                     }
                 });
             });
 
-            const option = {
-                title: {
-                    text: '字段关系图'
+            const graphOption = {
+                tooltip: {
+                    formatter: function (params) {
+                        if (params.dataType === 'edge') {
+                            return `${params.data.source} -> ${params.data.target}<br/>Type: ${params.data.label.formatter.split('\n')[0]}<br/>Confidence: ${params.data.value}`;
+                        }
+                        return params.name;
+                    }
                 },
-                tooltip: {},
-                animationDurationUpdate: 1500,
-                animationEasingUpdate: 'quinticInOut',
+                legend: [{ data: ['字段'] }], // Simplified legend
                 series: [{
                     type: 'graph',
                     layout: 'force',
-                    data: Array.from(nodes).map(name => ({
-                        name: name,
-                        symbolSize: 50,
-                        draggable: true
-                    })),
+                    data: Array.from(nodes.values()),
                     edges: edges,
+                    categories: [{ name: '字段' }],
                     roam: true,
                     label: {
                         show: true,
-                        position: 'right'
+                        position: 'right',
+                        formatter: '{b}'
                     },
                     force: {
-                        repulsion: 1000
-                    }
+                        repulsion: 100,
+                        edgeLength: [50, 100]
+                    },
+                    edgeSymbol: ['none', 'arrow'],
+                    edgeSymbolSize: [4, 10]
                 }]
             };
-
-            graph.setOption(option);
-            window.addEventListener('resize', () => graph.resize());
+            graphChart.setOption(graphOption);
         }
 
-        // 加载规则列表
+        // Load rules accordion
         function loadRules(rules) {
             const accordion = document.getElementById('ruleAccordion');
-            rules.forEach((rule, index) => {
-                const div = document.createElement('div');
-                div.className = 'accordion-item';
-                div.innerHTML = `
-                    <h2 class="accordion-header">
-                        <button class="accordion-button collapsed" type="button" 
-                                data-bs-toggle="collapse" data-bs-target="#rule${index}">
-                            ${rule.field} - ${rule.type}规则
-                            <span class="badge bg-secondary ms-2">优先级 ${rule.priority}</span>
+            accordion.innerHTML = ''; // Clear existing items
+            if (!rules || rules.length === 0) {
+                accordion.innerHTML = '<p class="text-center text-muted">未提取到规则。</p>';
+                return;
+            }
+
+            // Group rules by field names
+            const rulesByField = rules.reduce((acc, rule) => {
+                let fieldNames;
+                try {
+                    fieldNames = JSON.parse(rule.fieldNames || '[]');
+                } catch (e) {
+                    console.warn('Failed to parse field names:', rule.fieldNames);
+                    fieldNames = [rule.fieldNames || '未指定字段'];
+                }
+                
+                const fieldNameStr = Array.isArray(fieldNames) ? fieldNames.join(', ') : fieldNames;
+                if (!acc[fieldNameStr]) {
+                    acc[fieldNameStr] = [];
+                }
+                acc[fieldNameStr].push(rule);
+                return acc;
+            }, {});
+
+            Object.keys(rulesByField).sort().forEach((fieldName, index) => {
+                const fieldRules = rulesByField[fieldName];
+                const accordionItemId = `rule-item-${index}`;
+                const collapseId = `collapse-${index}`;
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'accordion-item';
+                itemDiv.innerHTML = `
+                    <h2 class="accordion-header" id="heading-${index}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
+                            字段: ${escapeHtml(fieldName)} (${fieldRules.length}条规则)
                         </button>
                     </h2>
-                    <div id="rule${index}" class="accordion-collapse collapse">
+                    <div id="${collapseId}" class="accordion-collapse collapse" 
+                         aria-labelledby="heading-${index}" data-bs-parent="#ruleAccordion">
                         <div class="accordion-body">
-                            <pre class="bg-light p-3 rounded">${rule.content}</pre>
+                            <ul class="list-group list-group-flush">
+                                ${fieldRules.map(rule => `
+                                    <li class="list-group-item">
+                                        <strong>[${escapeHtml(rule.ruleType || rule.type || '未知类型')}]</strong> 
+                                        ${escapeHtml(rule.ruleContent || rule.content || '')}
+                                        <span class="badge bg-light text-dark float-end">置信度: ${rule.confidence !== undefined ? rule.confidence.toFixed(2) : 'N/A'}</span>
+                                    </li>
+                                `).join('')}
+                            </ul>
                         </div>
                     </div>
                 `;
-                accordion.appendChild(div);
+                accordion.appendChild(itemDiv);
             });
         }
+
+        // Utility to escape HTML
+        function escapeHtml(unsafe) {
+            if (typeof unsafe !== 'string') return unsafe; // Handle non-strings gracefully
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Initial setup
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Task Status:", task.status);
+            console.log("Result data:", result); // 输出调试信息
+            updateProgressDisplay(progressData); // Update with initial progress data
+
+            // 任务日志初始化
+            const logArea = document.getElementById('logArea');
+            if (logArea) {
+                if (progressData && progressData.detailedLogs) {
+                    if (Array.isArray(progressData.detailedLogs)) {
+                        const logContent = progressData.detailedLogs
+                            .map(log => {
+                                const timestamp = log.timestamp || '';
+                                const step = log.step || '未知步骤';
+                                const message = log.message || '';
+                                const progress = log.progress !== undefined ? `(${log.progress}%)` : '';
+                                return `${timestamp} [${step}] ${message} ${progress}`;
+                            })
+                            .join('\n');
+                        logArea.textContent = logContent || '暂无日志。';
+                    } else if (typeof progressData.detailedLogs === 'string') {
+                        logArea.textContent = progressData.detailedLogs || '暂无日志。';
+                    }
+                } else {
+                    logArea.textContent = '暂无日志或正在加载中...';
+                }
+            }
+
+            if (task.status === 'PROCESSING' || task.status === 'PENDING') {
+                // Start polling if the task is processing or pending (might start processing soon)
+                if (!progressIntervalId) {
+                    console.log(`Starting progress polling for task ${task.id}`);
+                    progressIntervalId = setInterval(() => pollProgress(task.id), 3000); // Poll every 3 seconds
+                    // Poll immediately once
+                    pollProgress(task.id);
+                }
+            } else if (task.status === 'COMPLETED') {
+                if (result) {
+                    console.log("Task completed, loading results.");
+                    loadAnalysisResult();
+                } else {
+                    console.error("Task completed but no result data found.");
+                    alert("任务已完成，但无法加载结果数据。");
+                }
+            } else if (task.status === 'FAILED') {
+                console.log("Task failed.");
+                // Display error message from result if available
+                if (result && result.errorMessage) {
+                    const failAlert = document.querySelector('.alert-danger');
+                    if (failAlert) {
+                        failAlert.innerHTML = `任务执行失败: ${escapeHtml(result.errorMessage)}`;
+                    }
+                }
+            }
+        });
+        /*]]>*/
     </script>
 </body>
-</html> 
+</html>

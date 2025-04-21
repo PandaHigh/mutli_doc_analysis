@@ -43,16 +43,17 @@ CREATE TABLE analysis_result (
 DROP TABLE IF EXISTS excel_field;
 CREATE TABLE excel_field (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    task_id CHAR(36) NOT NULL,
+    task_id BIGINT NOT NULL,
+    table_name VARCHAR(255) NOT NULL,
     field_name VARCHAR(255) NOT NULL,
-    field_type VARCHAR(255),
+    field_type VARCHAR(50),
     category VARCHAR(255),
     description VARCHAR(1000),
-    related_text LONGTEXT,
     rules TEXT,
     INDEX idx_task_id (task_id),
     INDEX idx_field_name (field_name),
-    UNIQUE KEY uk_task_field (task_id, field_name)
+    UNIQUE KEY uk_task_table_field (task_id, table_name, field_name),
+    FOREIGN KEY (task_id) REFERENCES analysis_task(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 修改FieldRelation表
@@ -64,6 +65,8 @@ CREATE TABLE field_relation (
     target_field_id BIGINT NOT NULL,
     relation_score DOUBLE NOT NULL,
     relation_description TEXT,
+    relation_type VARCHAR(255),
+    confidence DOUBLE,
     INDEX idx_task_id (task_id),
     INDEX idx_source_field (source_field_id),
     INDEX idx_target_field (target_field_id)
@@ -74,15 +77,13 @@ DROP TABLE IF EXISTS field_rule;
 CREATE TABLE field_rule (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     task_id CHAR(36) NOT NULL,
-    field_id BIGINT NOT NULL,
-    field_name VARCHAR(255),
+    field_names TEXT NOT NULL,
     rule_type VARCHAR(20) NOT NULL,
     rule_content TEXT NOT NULL,
-    rule TEXT,
-    priority INT NOT NULL DEFAULT 1,
+    confidence DOUBLE,
     INDEX idx_task_id (task_id),
-    INDEX idx_field_id (field_id),
-    INDEX idx_rule_type (rule_type)
+    INDEX idx_rule_type (rule_type),
+    FOREIGN KEY (task_id) REFERENCES analysis_task(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 修改辅助表结构

@@ -72,7 +72,7 @@ public class AnalysisController {
             if (task.getStatus() == AnalysisTask.TaskStatus.COMPLETED) {
                 AnalysisResult result = analysisService.getResultByTaskId(id);
                 model.addAttribute("result", result);
-                return "task/result";
+                return "redirect:/task/result/" + id;
             } else {
                 model.addAttribute("error", "任务尚未完成，无法查看结果");
                 return "task/detail";
@@ -104,6 +104,20 @@ public class AnalysisController {
             return "redirect:/";
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "中止任务失败: " + e.getMessage());
+            return "redirect:/task/" + id;
+        }
+    }
+
+    @PostMapping("/task/{id}/resume")
+    public String resumeTask(@PathVariable String id, RedirectAttributes redirectAttributes) {
+        try {
+            analysisService.resumeTask(id);
+            // Start the task execution after resuming
+            analysisService.executeAnalysisTask(id);
+            redirectAttributes.addFlashAttribute("message", "任务已恢复，正在继续执行");
+            return "redirect:/task/" + id;
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "恢复任务失败: " + e.getMessage());
             return "redirect:/task/" + id;
         }
     }
@@ -270,21 +284,24 @@ public class AnalysisController {
             @RequestBody Map<String, Object> request) {
         try {
             String taskId = (String) request.get("taskId");
-            @SuppressWarnings("unchecked")
-            List<String> selectedCategories = (List<String>) request.get("categories");
+            // Removed selectedCategories as it's no longer needed
+            // @SuppressWarnings("unchecked")
+            // List<String> selectedCategories = (List<String>) request.get("categories");
             
-            if (taskId == null || selectedCategories == null) {
+            if (taskId == null) { // Only check for taskId now
                 return ResponseEntity.badRequest().body(
-                    Map.of("error", "Missing required parameters: taskId and categories")
+                    Map.of("error", "Missing required parameter: taskId")
                 );
             }
             
-            CompletableFuture<AnalysisResult> future = analysisService.startAnalysis(taskId, selectedCategories);
+            // Call the new executeAnalysisTask method
+            CompletableFuture<AnalysisResult> future = analysisService.executeAnalysisTask(taskId);
             
+            // Return immediately, the task runs in the background
             return ResponseEntity.ok(Map.of(
                 "taskId", taskId,
-                "status", "processing",
-                "message", "Analysis started"
+                "status", "processing", // Indicate task is queued/running
+                "message", "Analysis task started/resumed"
             ));
             
         } catch (Exception e) {

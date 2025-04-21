@@ -28,6 +28,9 @@ public class AnalysisResult {
     @Column(columnDefinition = "TEXT")
     private String errorMessage;
 
+    // 添加字段计数
+    private Integer fieldCount;
+
     // Default constructor
     public AnalysisResult() {
     }
@@ -79,5 +82,13 @@ public class AnalysisResult {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public Integer getFieldCount() {
+        return fieldCount;
+    }
+
+    public void setFieldCount(Integer fieldCount) {
+        this.fieldCount = fieldCount;
     }
 } 

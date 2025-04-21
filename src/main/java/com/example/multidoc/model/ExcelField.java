@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 
 @Entity
 @Table(uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"task_id", "field_name"})
+    @UniqueConstraint(columnNames = {"task_id", "table_name", "field_name"})
 })
 public class ExcelField {
     
@@ -16,23 +16,17 @@ public class ExcelField {
     @JoinColumn(name = "task_id")
     private AnalysisTask task;
     
+    @Column(name = "table_name")
+    private String tableName;
+    
     @Column(name = "field_name")
     private String fieldName;
     
     @Column(name = "field_type")
     private String fieldType;
     
-    private String category;
-    
     @Column(length = 1000)
     private String description;
-    
-    // 存储从Word文档中提取的相关文本
-    @Column(columnDefinition = "LONGTEXT")
-    private String relatedText;
-    
-    @Column(columnDefinition = "TEXT")
-    private String rules;
 
     // Default constructor
     public ExcelField() {
@@ -55,6 +49,14 @@ public class ExcelField {
         this.task = task;
     }
 
+    public String getTableName() {
+        return tableName;
+    }
+
+    public void setTableName(String tableName) {
+        this.tableName = tableName;
+    }
+
     public String getFieldName() {
         return fieldName;
     }
@@ -71,35 +73,11 @@ public class ExcelField {
         this.fieldType = fieldType;
     }
 
-    public String getCategory() {
-        return category;
-    }
-
-    public void setCategory(String category) {
-        this.category = category;
-    }
-
     public String getDescription() {
         return description;
     }
 
     public void setDescription(String description) {
         this.description = description;
-    }
-
-    public String getRelatedText() {
-        return relatedText;
-    }
-
-    public void setRelatedText(String relatedText) {
-        this.relatedText = relatedText;
-    }
-    
-    public String getRules() {
-        return rules;
-    }
-
-    public void setRules(String rules) {
-        this.rules = rules;
     }
 } 

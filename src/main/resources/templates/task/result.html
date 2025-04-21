@@ -1,196 +1,76 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
-    <th:block th:replace="layout/base :: head" />
+    <title>Analysis Result</title>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .field-rules {
+            margin-top: 20px;
+        }
+        .rule-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 3px;
+        }
+        .rule-type {
+            font-weight: bold;
+            color: #333;
+        }
+        .rule-content {
+            margin-left: 20px;
+        }
+        .confidence {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
 </head>
 <body>
-    <th:block th:replace="layout/base :: navbar" />
-    
-    <div class="container mt-4">
-        <div class="row mb-4">
-            <div class="col">
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb">
-                        <li class="breadcrumb-item"><a href="/">任务列表</a></li>
-                        <li class="breadcrumb-item"><a th:href="@{'/task/' + ${task.id}}" th:text="${task.taskName}">任务详情</a></li>
-                        <li class="breadcrumb-item active">分析结果</li>
-                    </ol>
-                </nav>
+    <div class="container">
+        <h1>Analysis Result for Task: <span th:text="${task.taskName}"></span></h1>
+        
+        <div class="section">
+            <h2>Field Rules</h2>
+            <div class="field-rules">
+                <div th:each="rule : ${fieldRules}" class="rule-item">
+                    <div class="rule-type" th:text="${rule.fieldName}"></div>
+                    <div class="rule-content" th:text="${rule.ruleContent}"></div>
+                    <div class="confidence" th:text="'Confidence: ' + ${#numbers.formatDecimal(rule.confidence, 1, 2)}"></div>
+                </div>
             </div>
         </div>
-
-        <!-- 分析结果 -->
-        <div th:if="${result != null}" class="row">
-            <!-- Excel字段概况 -->
-            <div class="col-md-12 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">Excel字段概况</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>字段名称</th>
-                                        <th>描述</th>
-                                        <th>分类</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="fieldTable">
-                                    <!-- 字段列表将通过JavaScript动态加载 -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 字段关系图 -->
-            <div class="col-md-12 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">字段关系图</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="relationshipGraph" style="height: 600px;"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 规则列表 -->
-            <div class="col-md-12 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">提取的规则</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="accordion" id="ruleAccordion">
-                            <!-- 规则列表将通过JavaScript动态加载 -->
-                        </div>
-                    </div>
-                </div>
-            </div>
+        
+        <div class="section">
+            <a th:href="@{/task/{taskId}/export(taskId=${task.id})}" class="btn">Export Results</a>
         </div>
     </div>
-
-    <th:block th:replace="layout/base :: scripts" />
-    <!-- ECharts -->
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
-    <script th:inline="javascript">
-        const task = /*[[${task}]]*/ {};
-        const result = /*[[${result}]]*/ null;
-
-        // 初始化页面
-        document.addEventListener('DOMContentLoaded', function() {
-            if (result) {
-                loadAnalysisResult();
-            }
-        });
-
-        // 加载分析结果
-        function loadAnalysisResult() {
-            const resultJson = JSON.parse(result.resultJson);
-            
-            // 加载字段表格
-            loadFieldTable(resultJson.fields);
-            
-            // 加载关系图
-            loadRelationshipGraph(resultJson.relations);
-            
-            // 加载规则列表
-            loadRules(resultJson.rules);
-        }
-
-        // 加载字段表格
-        function loadFieldTable(fields) {
-            const tableBody = document.getElementById('fieldTable');
-            tableBody.innerHTML = '';
-            
-            fields.forEach(field => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${field.fieldName}</td>
-                    <td>${field.description || ''}</td>
-                    <td>${field.category || ''}</td>
-                `;
-                tableBody.appendChild(row);
-            });
-        }
-
-        // 加载关系图
-        function loadRelationshipGraph(relations) {
-            const chart = echarts.init(document.getElementById('relationshipGraph'));
-            
-            const nodes = new Set();
-            const links = [];
-            
-            relations.forEach(relation => {
-                nodes.add(relation.sourceField);
-                nodes.add(relation.targetField);
-                links.push({
-                    source: relation.sourceField,
-                    target: relation.targetField,
-                    value: relation.relevance
-                });
-            });
-            
-            const option = {
-                title: {
-                    text: '字段关系图'
-                },
-                tooltip: {},
-                animationDurationUpdate: 1500,
-                animationEasingUpdate: 'quinticInOut',
-                series: [{
-                    type: 'graph',
-                    layout: 'force',
-                    data: Array.from(nodes).map(node => ({
-                        name: node,
-                        symbolSize: 30
-                    })),
-                    links: links,
-                    categories: [],
-                    roam: true,
-                    label: {
-                        show: true,
-                        position: 'right'
-                    },
-                    force: {
-                        repulsion: 100
-                    }
-                }]
-            };
-            
-            chart.setOption(option);
-        }
-
-        // 加载规则列表
-        function loadRules(rules) {
-            const accordion = document.getElementById('ruleAccordion');
-            accordion.innerHTML = '';
-            
-            rules.forEach((rule, index) => {
-                const item = document.createElement('div');
-                item.className = 'accordion-item';
-                item.innerHTML = `
-                    <h2 class="accordion-header">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
-                                data-bs-target="#rule${index}">
-                            规则 ${index + 1}
-                        </button>
-                    </h2>
-                    <div id="rule${index}" class="accordion-collapse collapse">
-                        <div class="accordion-body">
-                            <p><strong>类型：</strong>${rule.type}</p>
-                            <p><strong>描述：</strong>${rule.description}</p>
-                            <p><strong>相关字段：</strong>${rule.relatedFields.join(', ')}</p>
-                        </div>
-                    </div>
-                `;
-                accordion.appendChild(item);
-            });
-        }
-    </script>
 </body>
 </html> 

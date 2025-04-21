@@ -121,6 +121,7 @@ public class ExcelProcessor {
                         // 创建要素信息
                         ElementInfo element = new ElementInfo();
                         element.setSheetName(sheetName);
+                        element.setTableName(sheetName);
                         element.setRowIndex(rowIndex);
                         element.setColumnIndex(colIndex);
                         element.setValue(value);
@@ -207,6 +208,7 @@ public class ExcelProcessor {
      */
     public static class ElementInfo {
         private String sheetName;
+        private String tableName;
         private int rowIndex;
         private int columnIndex;
         private String value;
@@ -225,6 +227,14 @@ public class ExcelProcessor {
 
         public void setSheetName(String sheetName) {
             this.sheetName = sheetName;
+        }
+
+        public String getTableName() {
+            return tableName;
+        }
+
+        public void setTableName(String tableName) {
+            this.tableName = tableName;
         }
 
         public int getRowIndex() {
@@ -319,6 +329,7 @@ public class ExcelProcessor {
         public String toString() {
             return "ElementInfo{" +
                     "sheetName='" + sheetName + '\'' +
+                    ", tableName='" + tableName + '\'' +
                     ", rowIndex=" + rowIndex +
                     ", columnIndex=" + columnIndex +
                     ", value='" + value + '\'' +

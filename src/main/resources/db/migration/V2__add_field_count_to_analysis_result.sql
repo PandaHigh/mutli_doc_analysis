@@ -1,0 +1,1 @@
+ALTER TABLE analysis_result ADD COLUMN field_count INT DEFAULT 0; 

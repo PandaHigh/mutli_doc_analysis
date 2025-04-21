@@ -15,32 +15,42 @@ public class AnalysisTask {
     
     private String taskName;
     
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "task_word_files", joinColumns = @JoinColumn(name = "task_id"))
+    @Column(name = "file_path")
+    private List<String> wordFilePaths = new ArrayList<>();
+    
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "task_excel_files", joinColumns = @JoinColumn(name = "task_id"))
+    @Column(name = "file_path")
+    private List<String> excelFilePaths = new ArrayList<>();
+    
     private LocalDateTime createdTime;
     
     @Enumerated(EnumType.STRING)
     private TaskStatus status;
     
-    @ElementCollection
-    @CollectionTable(name = "word_files", joinColumns = @JoinColumn(name = "task_id"))
-    @Column(name = "file_path")
-    private List<String> wordFilePaths = new ArrayList<>();
-    
-    @ElementCollection
-    @CollectionTable(name = "excel_files", joinColumns = @JoinColumn(name = "task_id"))
-    @Column(name = "file_path")
-    private List<String> excelFilePaths = new ArrayList<>();
-    
     private String resultFilePath;
     
     private Integer chunkSize;
     
+    private String lastCompletedStep;
+    
+    private Integer progress;
+    
     public enum TaskStatus {
-        CREATED, PROCESSING, COMPLETED, FAILED, WAITING_FOR_SELECTION
+        PENDING,
+        PROCESSING,
+        COMPLETED,
+        FAILED
     }
 
     // Default constructor
     public AnalysisTask() {
         this.id = UUID.randomUUID().toString();
+        this.createdTime = LocalDateTime.now();
+        this.progress = 0;
+        this.status = TaskStatus.PENDING;
     }
 
     // Getters and Setters
@@ -60,22 +70,6 @@ public class AnalysisTask {
         this.taskName = taskName;
     }
 
-    public LocalDateTime getCreatedTime() {
-        return createdTime;
-    }
-
-    public void setCreatedTime(LocalDateTime createdTime) {
-        this.createdTime = createdTime;
-    }
-
-    public TaskStatus getStatus() {
-        return status;
-    }
-
-    public void setStatus(TaskStatus status) {
-        this.status = status;
-    }
-
     public List<String> getWordFilePaths() {
         return wordFilePaths;
     }
@@ -92,6 +86,30 @@ public class AnalysisTask {
         this.excelFilePaths = excelFilePaths;
     }
 
+    public LocalDateTime getCreatedTime() {
+        return createdTime;
+    }
+
+    public void setCreatedTime(LocalDateTime createdTime) {
+        this.createdTime = createdTime;
+    }
+
+    public Integer getProgress() {
+        return progress;
+    }
+
+    public void setProgress(Integer progress) {
+        this.progress = progress;
+    }
+
+    public TaskStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(TaskStatus status) {
+        this.status = status;
+    }
+
     public String getResultFilePath() {
         return resultFilePath;
     }
@@ -106,5 +124,13 @@ public class AnalysisTask {
 
     public void setChunkSize(Integer chunkSize) {
         this.chunkSize = chunkSize;
+    }
+
+    public String getLastCompletedStep() {
+        return lastCompletedStep;
+    }
+
+    public void setLastCompletedStep(String lastCompletedStep) {
+        this.lastCompletedStep = lastCompletedStep;
     }
 } 

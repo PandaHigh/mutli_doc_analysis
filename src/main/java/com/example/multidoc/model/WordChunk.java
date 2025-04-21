@@ -24,9 +24,20 @@ public class WordChunk {
     
     private Integer endPosition; // 在原文档中的结束位置
     
+    @Enumerated(EnumType.STRING)
+    private ChunkStatus status = ChunkStatus.PENDING; // Added: track chunk analysis status
+    
     @Column(length = 1000)
     private String metadata; // 可存储章节名等元数据
 
+    // Added: Enum for chunk status
+    public enum ChunkStatus {
+        PENDING, // 未处理
+        PROCESSING, // 正在处理
+        ANALYZED, // 已分析
+        FAILED // 处理失败
+    }
+    
     // Default constructor
     public WordChunk() {
     }
@@ -88,6 +99,14 @@ public class WordChunk {
         this.endPosition = endPosition;
     }
 
+    public ChunkStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(ChunkStatus status) {
+        this.status = status;
+    }
+    
     public String getMetadata() {
         return metadata;
     }

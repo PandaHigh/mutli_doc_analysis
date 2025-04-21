@@ -11,8 +11,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -90,7 +95,7 @@ public class DocumentService {
      * 处理Word文档
      */
     public void processWordDocuments(AnalysisTask task) {
-        processWordDocuments(task, 1000); // 默认块大小为1000字符
+        processWordDocuments(task, 5000); // 默认块大小为5000字符
     }
 
     /**
@@ -101,6 +106,12 @@ public class DocumentService {
     public void processWordDocuments(AnalysisTask task, int chunkSize) {
         task.setChunkSize(chunkSize);
         
+        // 创建一个临时文件来存储所有文档的拼接内容
+        StringBuilder allContent = new StringBuilder();
+        int currentPosition = 0;
+        List<FilePosition> filePositions = new ArrayList<>();
+        
+        // 首先读取所有文档内容并拼接
         for (String filePath : task.getWordFilePaths()) {
             try {
                 File file = new File(filePath);
@@ -108,20 +119,103 @@ public class DocumentService {
                     throw new RuntimeException("文件不存在: " + filePath);
                 }
 
-                // 使用WordProcessor处理文档
-                List<WordChunk> chunks = WordProcessor.processDocument(file, chunkSize);
-                
-                // 保存文档块
-                for (WordChunk chunk : chunks) {
-                    chunk.setTask(task);
-                    chunk.setSourceFile(file.getName()); // 设置源文件名
-                    wordChunkRepository.save(chunk);
+                // 直接读取文档内容
+                try (FileInputStream fis = new FileInputStream(file);
+                     XWPFDocument document = new XWPFDocument(fis)) {
+                    
+                    // 记录文件位置信息
+                    FilePosition filePosition = new FilePosition();
+                    filePosition.fileName = file.getName();
+                    filePosition.startPosition = currentPosition;
+                    
+                    // 读取所有段落并拼接
+                    for (XWPFParagraph paragraph : document.getParagraphs()) {
+                        String text = paragraph.getText().trim();
+                        if (!text.isEmpty()) {
+                            allContent.append(text).append("\n");
+                            currentPosition += text.length() + 1;
+                        }
+                    }
+                    
+                    filePosition.endPosition = currentPosition - 1;
+                    filePositions.add(filePosition);
                 }
+                
             } catch (Exception e) {
                 logger.error("处理Word文档失败: " + filePath, e);
                 throw new RuntimeException("处理Word文档失败: " + e.getMessage(), e);
             }
         }
+        
+        // 创建临时文件存储拼接后的内容
+        File tempFile = null;
+        try {
+            tempFile = File.createTempFile("combined_", ".docx");
+            try (FileOutputStream fos = new FileOutputStream(tempFile);
+                 XWPFDocument document = new XWPFDocument()) {
+                
+                // 将拼接的内容写入临时文档
+                XWPFParagraph paragraph = document.createParagraph();
+                XWPFRun run = paragraph.createRun();
+                run.setText(allContent.toString());
+                
+                document.write(fos);
+            }
+            
+            // 使用processDocument方法对临时文件进行分块
+            List<WordChunk> chunks = WordProcessor.processDocument(tempFile, chunkSize);
+            
+            // 保存分块结果
+            for (int i = 0; i < chunks.size(); i++) {
+                WordChunk chunk = chunks.get(i);
+                String chunkContent = chunk.getContent();
+                
+                // 确定这个块属于哪个源文件
+                String sourceFile = determineSourceFile(filePositions, chunk.getStartPosition(), chunk.getEndPosition());
+                
+                // 更新块信息并保存
+                chunk.setTask(task);
+                chunk.setSourceFile(sourceFile);
+                chunk.setChunkIndex(i);
+                wordChunkRepository.save(chunk);
+            }
+            
+        } catch (Exception e) {
+            logger.error("处理拼接文档失败", e);
+            throw new RuntimeException("处理拼接文档失败: " + e.getMessage(), e);
+        } finally {
+            // 删除临时文件
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
+    }
+    
+    // 辅助类：记录文件位置信息
+    private static class FilePosition {
+        String fileName;
+        int startPosition;
+        int endPosition;
+    }
+    
+    // 确定文本块属于哪个源文件
+    private String determineSourceFile(List<FilePosition> filePositions, int start, int end) {
+        for (FilePosition pos : filePositions) {
+            if (start >= pos.startPosition && end <= pos.endPosition) {
+                return pos.fileName;
+            }
+        }
+        // 如果找不到完全匹配的文件，返回包含最多内容的文件
+        int maxOverlap = 0;
+        String bestMatch = null;
+        for (FilePosition pos : filePositions) {
+            int overlap = Math.min(end, pos.endPosition) - Math.max(start, pos.startPosition);
+            if (overlap > maxOverlap) {
+                maxOverlap = overlap;
+                bestMatch = pos.fileName;
+            }
+        }
+        return bestMatch;
     }
 
     /**
