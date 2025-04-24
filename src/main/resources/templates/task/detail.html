@@ -55,6 +55,16 @@
                     </div>
                 </div>
 
+                <!-- 查看结果按钮（仅在任务完成时显示） -->
+                <div th:if="${task.status.name() == 'COMPLETED'}" class="mt-3">
+                    <a th:href="@{/task/{id}/result(id=${task.id})}" class="btn btn-success btn-sm">
+                        <i class="fas fa-chart-bar me-1"></i> 查看分析结果
+                    </a>
+                    <a th:href="@{/task/{id}/export(id=${task.id})}" class="btn btn-primary btn-sm ms-2">
+                        <i class="fas fa-file-download me-1"></i> 导出结果
+                    </a>
+                </div>
+
                 <!-- Progress Bar & Status -->
                 <div th:if="${task.status.name() == 'PROCESSING' or task.status.name() == 'PENDING'}" class="progress-container mt-3">
                     <div class="progress">
@@ -94,67 +104,6 @@
 
         <!-- REMOVED Category Selection Section -->
         <!-- <div th:if="${task.status.name() == 'WAITING_FOR_SELECTION'}" class="card mb-4"> ... </div> -->
-
-        <!-- Analysis Result (Shown when COMPLETED) -->
-        <div th:if="${task.status.name() == 'COMPLETED' and result != null}" class="row">
-            
-            <!-- Analysis Report -->
-            <div class="col-md-12 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">分析报告</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="analysisReport" class="markdown-content"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Compiled Rules -->
-            <div class="col-md-12 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">规则总结</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="compiledRules" class="markdown-content"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Original Field Rules -->
-            <div class="col-md-12 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">原始规则</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="fieldRules" class="markdown-content"></div>
-                    </div>
-                </div>
-            </div>
-
-
-
-            <!-- Statistics -->
-            <div class="col-md-12 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">统计信息</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <p>字段总数：<span id="fieldCount">0</span></p>
-                            </div>
-                            <div class="col-md-6">
-                                <p>规则总数：<span id="ruleCount">0</span></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
         
         <!-- Log Area -->
         <div class="card mb-4">
@@ -185,6 +134,8 @@
                 return;
             }
             
+            console.log('Progress info received:', progressInfo); // 添加调试信息
+            
             const progressBar = document.getElementById('progress-bar-' + task.id);
             const progressText = document.getElementById('progress-text-' + task.id);
             const logArea = document.getElementById('logArea');
@@ -204,7 +155,26 @@
             if (logArea) {
                 try {
                     let logContent = '';
-                    if (progressInfo.detailedLogs) {
+                    // 简化日志处理逻辑，优先使用logs字段
+                    if (progressInfo.logs) {
+                        if (Array.isArray(progressInfo.logs)) {
+                            logContent = progressInfo.logs
+                                .map(log => {
+                                    if (typeof log === 'string') return log;
+                                    if (!log) return ''; // Skip null or undefined log entries
+                                    const timestamp = log.timestamp || '';
+                                    const step = log.step || log.type || '未知步骤';
+                                    const message = log.message || log.content || '';
+                                    const progress = log.progress !== undefined ? `(${log.progress}%)` : '';
+                                    return `${timestamp} [${step}] ${message} ${progress}`;
+                                })
+                                .filter(line => line.trim() !== '') // Remove empty lines
+                                .join('\n');
+                        } else if (typeof progressInfo.logs === 'string') {
+                            logContent = progressInfo.logs;
+                        }
+                    } else if (progressInfo.detailedLogs) {
+                        // 为向后兼容保留detailedLogs处理逻辑
                         if (Array.isArray(progressInfo.detailedLogs)) {
                             logContent = progressInfo.detailedLogs
                                 .map(log => {
@@ -226,24 +196,6 @@
                             } catch (e) {
                                 logContent = '日志数据格式无法解析';
                             }
-                        }
-                    } else if (progressInfo.logs) {
-                        // Alternative property name
-                        if (Array.isArray(progressInfo.logs)) {
-                            logContent = progressInfo.logs
-                                .map(log => {
-                                    if (typeof log === 'string') return log;
-                                    if (!log) return ''; // Skip null or undefined log entries
-                                    const timestamp = log.timestamp || '';
-                                    const step = log.step || log.type || '未知步骤';
-                                    const message = log.message || log.content || '';
-                                    const progress = log.progress !== undefined ? `(${log.progress}%)` : '';
-                                    return `${timestamp} [${step}] ${message} ${progress}`;
-                                })
-                                .filter(line => line.trim() !== '') // Remove empty lines
-                                .join('\n');
-                        } else if (typeof progressInfo.logs === 'string') {
-                            logContent = progressInfo.logs;
                         }
                     }
                     
@@ -273,7 +225,7 @@
 
         // Function to fetch and update progress
         function pollProgress(taskId) {
-            fetch(`/api/analysis/progress/${taskId}`)
+            fetch(`/api/task/${taskId}/progress`)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Failed to fetch progress: ' + response.statusText);
@@ -320,8 +272,21 @@
                 return;
             }
             try {
-                console.log('Parsing result JSON:', result.resultJson); // Debug log
-                const resultData = JSON.parse(result.resultJson);
+                console.log('Processing result text:', result.resultJson); // Debug log
+                
+                // 尝试解析 JSON，如果失败则直接使用文本
+                let resultData;
+                try {
+                    resultData = JSON.parse(result.resultJson);
+                } catch (jsonError) {
+                    console.warn('Result is not valid JSON, using as text:', jsonError);
+                    // 创建一个包含文本内容的模拟数据对象
+                    resultData = {
+                        report: result.resultJson,
+                        compiledRules: '',
+                        fieldRules: []
+                    };
+                }
                 
                 // 显示编译后的规则
                 const compiledRulesElement = document.getElementById('compiledRules');
@@ -472,8 +437,8 @@
                 }
 
             } catch (e) {
-                console.error('Error parsing result JSON:', e);
-                alert('加载分析结果失败：结果数据格式错误。详情请查看控制台。');
+                console.error('Error processing result:', e);
+                alert('加载分析结果失败：处理结果数据时出错。详情请查看控制台。');
             }
         }
 
@@ -641,14 +606,15 @@
         document.addEventListener('DOMContentLoaded', function() {
             console.log("Task Status:", task.status);
             console.log("Result data:", result); // 输出调试信息
+            console.log("Progress data:", progressData); // 添加进度数据调试信息
             updateProgressDisplay(progressData); // Update with initial progress data
 
             // 任务日志初始化
             const logArea = document.getElementById('logArea');
             if (logArea) {
-                if (progressData && progressData.detailedLogs) {
-                    if (Array.isArray(progressData.detailedLogs)) {
-                        const logContent = progressData.detailedLogs
+                if (progressData && progressData.logs) {
+                    if (Array.isArray(progressData.logs)) {
+                        const logContent = progressData.logs
                             .map(log => {
                                 const timestamp = log.timestamp || '';
                                 const step = log.step || '未知步骤';
@@ -658,8 +624,8 @@
                             })
                             .join('\n');
                         logArea.textContent = logContent || '暂无日志。';
-                    } else if (typeof progressData.detailedLogs === 'string') {
-                        logArea.textContent = progressData.detailedLogs || '暂无日志。';
+                    } else if (typeof progressData.logs === 'string') {
+                        logArea.textContent = progressData.logs || '暂无日志。';
                     }
                 } else {
                     logArea.textContent = '暂无日志或正在加载中...';

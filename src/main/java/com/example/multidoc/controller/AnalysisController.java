@@ -2,8 +2,10 @@ package com.example.multidoc.controller;
 
 import com.example.multidoc.model.AnalysisResult;
 import com.example.multidoc.model.AnalysisTask;
+import com.example.multidoc.model.TaskLog;
 import com.example.multidoc.service.AnalysisService;
 import com.example.multidoc.service.DocumentService;
+import com.example.multidoc.service.TaskService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 @Controller
 @RequestMapping("/")
@@ -32,6 +35,9 @@ public class AnalysisController {
 
     @Autowired
     private DocumentService documentService;
+
+    @Autowired
+    private TaskService taskService;
 
     @GetMapping
     public String index(Model model) {
@@ -48,6 +54,25 @@ public class AnalysisController {
 
             // 获取任务进度信息
             Map<String, Object> progress = analysisService.getTaskProgress(id);
+            
+            // 获取任务日志并添加到进度信息中
+            try {
+                List<TaskLog> taskLogs = taskService.getTaskLogs(id);
+                List<Map<String, Object>> formattedLogs = taskLogs.stream()
+                    .map(log -> {
+                        Map<String, Object> formattedLog = new HashMap<>();
+                        formattedLog.put("timestamp", log.getLogTime().toString());
+                        formattedLog.put("step", log.getLogLevel());
+                        formattedLog.put("message", log.getMessage());
+                        formattedLog.put("progress", task.getProgress());
+                        return formattedLog;
+                    })
+                    .collect(Collectors.toList());
+                progress.put("logs", formattedLogs);
+            } catch (Exception e) {
+                logger.warn("获取任务日志失败: {}", e.getMessage());
+            }
+            
             model.addAttribute("progress", progress);
 
             // 如果任务已完成，获取结果
@@ -57,26 +82,6 @@ public class AnalysisController {
             }
 
             return "task/detail";
-        } catch (Exception e) {
-            model.addAttribute("error", e.getMessage());
-            return "error";
-        }
-    }
-
-    @GetMapping("/task/{id}/result")
-    public String viewTaskResult(@PathVariable String id, Model model) {
-        try {
-            AnalysisTask task = analysisService.getTaskById(id);
-            model.addAttribute("task", task);
-
-            if (task.getStatus() == AnalysisTask.TaskStatus.COMPLETED) {
-                AnalysisResult result = analysisService.getResultByTaskId(id);
-                model.addAttribute("result", result);
-                return "redirect:/task/result/" + id;
-            } else {
-                model.addAttribute("error", "任务尚未完成，无法查看结果");
-                return "task/detail";
-            }
         } catch (Exception e) {
             model.addAttribute("error", e.getMessage());
             return "error";
@@ -267,10 +272,8 @@ public class AnalysisController {
             status.put("taskName", task.getTaskName());
             status.put("status", task.getStatus().name());
             status.put("createdTime", task.getCreatedTime());
-            
-            // 获取任务进度信息
-            Map<String, Object> progress = analysisService.getTaskProgress(id);
-            status.put("progress", progress);
+            status.put("progress", task.getProgress());
+            status.put("lastCompletedStep", task.getLastCompletedStep());
             
             return ResponseEntity.ok(status);
         } catch (Exception e) {

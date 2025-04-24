@@ -10,7 +10,6 @@ import lombok.Data;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
-import com.example.multidoc.model.WordChunk;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.slf4j.Logger;
@@ -18,7 +17,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -26,7 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.io.FileInputStream;
-import java.lang.StringBuilder;
+import java.util.regex.Pattern;
 
 @Component
 public class WordProcessor {
@@ -44,43 +42,21 @@ public class WordProcessor {
 
     private static final String[] ALLOWED_EXTENSIONS = {".docx", ".doc"};
     private final DocumentParser documentParser;
+    
+    // 定义句子结束标记的正则表达式
+    private static final Pattern SENTENCE_END_PATTERN = Pattern.compile("(?<=[.!?。！？])\\s*(?=\\S)");
+    
+    // 定义段落分隔符
+    private static final String PARAGRAPH_SEPARATOR = "\n\n";
+    
+    // 定义最小句子长度
+    private static final int MIN_SENTENCE_LENGTH = 50;
+    
+    // 定义上下文窗口大小
+    private static final int CONTEXT_WINDOW_SIZE = 200;
 
     public WordProcessor() {
         this.documentParser = new ApachePoiDocumentParser();
-    }
-
-    public List<WordChunkInfo> chunkWordDocument(String filePath) throws IOException {
-        try (InputStream inputStream = Files.newInputStream(Paths.get(filePath))) {
-            Document document = documentParser.parse(inputStream);
-            List<TextSegment> segments = DocumentSplitters.recursive(maxChunkSize, overlapSize)
-                .split(document);
-            
-            List<WordChunkInfo> chunks = new ArrayList<>();
-            int chunkIndex = 0;
-
-            for (TextSegment segment : segments) {
-                if (segment.text().trim().isEmpty()) {
-                    continue;  // Skip empty segments
-                }
-                
-                WordChunkInfo chunk = new WordChunkInfo();
-                chunk.setChunkIndex(chunkIndex++);
-                chunk.setContent(segment.text());
-                
-                Metadata metadata = segment.metadata();
-                String overlap = metadata.get("overlap");
-                String startPosition = metadata.get("start_position");
-                String endPosition = metadata.get("end_position");
-                
-                chunk.setOverlap(overlap != null ? overlap : "0");
-                chunk.setStartPosition(startPosition != null ? startPosition : String.valueOf(0));
-                chunk.setEndPosition(endPosition != null ? endPosition : String.valueOf(segment.text().length()));
-                
-                chunks.add(chunk);
-            }
-
-            return chunks;
-        }
     }
 
     public String processWordFile(MultipartFile file) throws IOException {
@@ -121,39 +97,160 @@ public class WordProcessor {
         return false;
     }
 
-    private int roughTokenCount(String text) {
-        if (text == null || text.isEmpty()) {
-            return 0;
+    /**
+     * 处理Word文档并按句子分割，保留上下文信息
+     * @param file Word文档文件
+     * @return 句子列表
+     */
+    public List<WordSentenceInfo> processSentences(File file) {
+        List<WordSentenceInfo> sentences = new ArrayList<>();
+        try (FileInputStream fis = new FileInputStream(file);
+             XWPFDocument document = new XWPFDocument(fis)) {
+            
+            int sentenceIndex = 0;
+            int totalPosition = 0;
+            StringBuilder fullText = new StringBuilder();
+            
+            // 首先构建完整文本，保留段落结构
+            for (XWPFParagraph paragraph : document.getParagraphs()) {
+                String text = paragraph.getText().trim();
+                if (text.isEmpty()) continue;
+                
+                fullText.append(text).append(PARAGRAPH_SEPARATOR);
+            }
+            
+            // 使用 langchain4j 的文档分割器进行智能分割
+            Document doc = Document.from(fullText.toString(), Metadata.from("source", file.getPath()));
+            List<TextSegment> segments = DocumentSplitters.recursive(maxChunkSize, overlapSize).split(doc);
+            
+            // 处理每个分割后的段落
+            for (TextSegment segment : segments) {
+                String segmentText = segment.text();
+                int segmentStart = fullText.indexOf(segmentText);
+                
+                // 按句子分割段落
+                String[] sentenceTexts = SENTENCE_END_PATTERN.split(segmentText);
+                int currentPosition = 0;
+                StringBuilder currentSentence = new StringBuilder();
+                
+                for (String sentenceText : sentenceTexts) {
+                    if (sentenceText.trim().isEmpty()) continue;
+                    
+                    // 如果当前句子太短，尝试与下一个句子合并
+                    if (currentSentence.length() < MIN_SENTENCE_LENGTH) {
+                        if (currentSentence.length() > 0) {
+                            currentSentence.append(" ");
+                        }
+                        currentSentence.append(sentenceText.trim());
+                        continue;
+                    }
+                    
+                    // 处理当前累积的句子
+                    if (currentSentence.length() > 0) {
+                        String finalSentence = currentSentence.toString();
+                        int sentenceStart = segmentText.indexOf(finalSentence, currentPosition);
+                        int startPosition = segmentStart + sentenceStart;
+                        int length = finalSentence.length();
+                        
+                        WordSentenceInfo sentence = new WordSentenceInfo();
+                        sentence.setSentenceIndex(sentenceIndex++);
+                        sentence.setContent(finalSentence);
+                        sentence.setStartPosition(startPosition);
+                        sentence.setEndPosition(startPosition + length - 1);
+                        
+                        // 添加上下文信息
+                        String context = extractContext(fullText.toString(), startPosition, length);
+                        sentence.setContext(context);
+                        
+                        sentences.add(sentence);
+                        
+                        // 更新当前位置到这个句子之后
+                        currentPosition = sentenceStart + length;
+                        currentSentence = new StringBuilder();
+                    }
+                    
+                    // 开始新的句子
+                    currentSentence.append(sentenceText.trim());
+                }
+                
+                // 处理最后一个累积的句子
+                if (currentSentence.length() > 0) {
+                    String finalSentence = currentSentence.toString();
+                    int sentenceStart = segmentText.indexOf(finalSentence, currentPosition);
+                    int startPosition = segmentStart + sentenceStart;
+                    int length = finalSentence.length();
+                    
+                    WordSentenceInfo sentence = new WordSentenceInfo();
+                    sentence.setSentenceIndex(sentenceIndex++);
+                    sentence.setContent(finalSentence);
+                    sentence.setStartPosition(startPosition);
+                    sentence.setEndPosition(startPosition + length - 1);
+                    
+                    // 添加上下文信息
+                    String context = extractContext(fullText.toString(), startPosition, length);
+                    sentence.setContext(context);
+                    
+                    sentences.add(sentence);
+                }
+            }
+            
+            return sentences;
+            
+        } catch (IOException e) {
+            logger.error("处理Word文档失败: " + file.getPath(), e);
+            throw new RuntimeException("处理Word文档失败: " + e.getMessage(), e);
         }
-        return text.split("\\s+").length;
+    }
+    
+    /**
+     * 提取句子的上下文信息
+     * @param fullText 完整文本
+     * @param startPosition 句子开始位置
+     * @param length 句子长度
+     * @return 上下文信息
+     */
+    private String extractContext(String fullText, int startPosition, int length) {
+        // 计算上下文范围，确保不会超出文本边界
+        int contextStart = Math.max(0, startPosition - CONTEXT_WINDOW_SIZE);
+        int contextEnd = Math.min(fullText.length(), startPosition + length + CONTEXT_WINDOW_SIZE);
+        
+        // 确保开始位置不会大于结束位置
+        if (contextStart >= contextEnd) {
+            contextStart = Math.max(0, contextEnd - length - CONTEXT_WINDOW_SIZE);
+        }
+        
+        // 提取上下文
+        String context = fullText.substring(contextStart, contextEnd);
+        
+        // 如果上下文被截断，添加标记
+        if (contextStart > 0) {
+            context = "..." + context;
+        }
+        if (contextEnd < fullText.length()) {
+            context = context + "...";
+        }
+        
+        return context;
     }
 
     @Data
-    public static class WordChunkInfo {
-        private int chunkIndex;
+    public static class WordSentenceInfo {
+        private int sentenceIndex;
         private String content;
-        private String overlap;
-        private String startPosition;
-        private String endPosition;
+        private int startPosition;
+        private int endPosition;
+        private String context; // 新增：上下文信息
 
-        public WordChunkInfo() {
+        public WordSentenceInfo() {
             // Default constructor
         }
 
-        public WordChunkInfo(int chunkIndex, String content, String overlap, String startPosition, String endPosition) {
-            this.chunkIndex = chunkIndex;
-            this.content = content;
-            this.overlap = overlap;
-            this.startPosition = startPosition;
-            this.endPosition = endPosition;
+        public int getSentenceIndex() {
+            return sentenceIndex;
         }
 
-        public int getChunkIndex() {
-            return chunkIndex;
-        }
-
-        public void setChunkIndex(int chunkIndex) {
-            this.chunkIndex = chunkIndex;
+        public void setSentenceIndex(int sentenceIndex) {
+            this.sentenceIndex = sentenceIndex;
         }
 
         public String getContent() {
@@ -164,114 +261,28 @@ public class WordProcessor {
             this.content = content;
         }
 
-        public String getOverlap() {
-            return overlap;
-        }
-
-        public void setOverlap(String overlap) {
-            this.overlap = overlap;
-        }
-
-        public String getStartPosition() {
+        public int getStartPosition() {
             return startPosition;
         }
 
-        public void setStartPosition(String startPosition) {
+        public void setStartPosition(int startPosition) {
             this.startPosition = startPosition;
         }
 
-        public String getEndPosition() {
+        public int getEndPosition() {
             return endPosition;
         }
 
-        public void setEndPosition(String endPosition) {
+        public void setEndPosition(int endPosition) {
             this.endPosition = endPosition;
         }
-    }
-
-    /**
-     * 处理Word文档并分块，确保在段落边界进行分块
-     * @param file Word文档文件
-     * @param chunkSize 文本块大小（字符数）
-     * @return 文档块列表
-     */
-    public static List<WordChunk> processDocument(File file, int chunkSize) {
-        List<WordChunk> chunks = new ArrayList<>();
-        try (FileInputStream fis = new FileInputStream(file);
-             XWPFDocument document = new XWPFDocument(fis)) {
-            
-            StringBuilder currentChunk = new StringBuilder();
-            int currentSize = 0;
-            int chunkIndex = 0;
-            int startPosition = 0;
-            int totalPosition = 0;
-
-            for (XWPFParagraph paragraph : document.getParagraphs()) {
-                String text = paragraph.getText().trim();
-                if (text.isEmpty()) continue;
-
-                // 如果当前段落加上当前块的大小超过chunkSize，且当前块不为空
-                if (currentSize + text.length() > chunkSize && currentSize > 0) {
-                    // 保存当前块
-                    WordChunk chunk = new WordChunk();
-                    chunk.setChunkIndex(chunkIndex++);
-                    chunk.setContent(currentChunk.toString());
-                    chunk.setStartPosition(startPosition);
-                    chunk.setEndPosition(startPosition + currentSize - 1);
-                    chunks.add(chunk);
-                    
-                    // 重置当前块
-                    startPosition = totalPosition;
-                    currentChunk = new StringBuilder();
-                    currentSize = 0;
-                }
-
-                // 如果段落本身超过块大小，需要按句子分割
-                if (text.length() > chunkSize) {
-                    String[] sentences = text.split("(?<=[.!?。！？])");
-                    for (String sentence : sentences) {
-                        if (currentSize + sentence.length() > chunkSize && currentSize > 0) {
-                            // 保存当前块
-                            WordChunk chunk = new WordChunk();
-                            chunk.setChunkIndex(chunkIndex++);
-                            chunk.setContent(currentChunk.toString());
-                            chunk.setStartPosition(startPosition);
-                            chunk.setEndPosition(startPosition + currentSize - 1);
-                            chunks.add(chunk);
-                            
-                            // 重置当前块
-                            startPosition = totalPosition;
-                            currentChunk = new StringBuilder();
-                            currentSize = 0;
-                        }
-                        
-                        currentChunk.append(sentence).append("\n");
-                        currentSize += sentence.length() + 1;
-                        totalPosition += sentence.length() + 1;
-                    }
-                } else {
-                    currentChunk.append(text).append("\n");
-                    currentSize += text.length() + 1;
-                    totalPosition += text.length() + 1;
-                }
-            }
-
-            // 保存最后一个块
-            if (currentSize > 0) {
-                WordChunk chunk = new WordChunk();
-                chunk.setChunkIndex(chunkIndex);
-                chunk.setContent(currentChunk.toString());
-                chunk.setStartPosition(startPosition);
-                chunk.setEndPosition(startPosition + currentSize - 1);
-                chunks.add(chunk);
-            }
-
-            logger.info("成功处理Word文档: {}, 共生成{}个块", file.getName(), chunks.size());
-            return chunks;
-
-        } catch (Exception e) {
-            logger.error("处理Word文档失败: " + file.getPath(), e);
-            throw new RuntimeException("处理Word文档失败: " + e.getMessage(), e);
+        
+        public String getContext() {
+            return context;
+        }
+        
+        public void setContext(String context) {
+            this.context = context;
         }
     }
 } 

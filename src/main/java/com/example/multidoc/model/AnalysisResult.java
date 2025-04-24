@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
+@Table(name = "analysis_results")
 public class AnalysisResult {
     
     @Id
@@ -11,23 +12,21 @@ public class AnalysisResult {
     private Long id;
     
     @OneToOne
-    @JoinColumn(name = "task_id")
+    @JoinColumn(name = "task_id", nullable = false, unique = true)
     private AnalysisTask task;
     
+    @Column(name = "completed_time")
     private LocalDateTime completedTime;
     
-    // 存储JSON格式的汇总结果
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(name = "result_json", columnDefinition = "TEXT")
     private String resultJson;
     
-    // 存储结果摘要
-    @Column(columnDefinition = "TEXT")
-    private String summary;
+    @Column(name = "summary_text", columnDefinition = "TEXT")
+    private String summaryText;
     
-    // 存储可能的错误信息
-    @Column(columnDefinition = "TEXT")
+    @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
-
+    
     // 添加字段计数
     private Integer fieldCount;
 
@@ -68,12 +67,16 @@ public class AnalysisResult {
         this.resultJson = resultJson;
     }
 
-    public String getSummary() {
-        return summary;
+    public String getSummaryText() {
+        return summaryText;
+    }
+
+    public void setSummaryText(String summaryText) {
+        this.summaryText = summaryText;
     }
 
     public void setSummary(String summary) {
-        this.summary = summary;
+        this.summaryText = summary;
     }
 
     public String getErrorMessage() {
@@ -90,5 +93,15 @@ public class AnalysisResult {
 
     public void setFieldCount(Integer fieldCount) {
         this.fieldCount = fieldCount;
+    }
+
+    @Override
+    public String toString() {
+        return "AnalysisResult{" +
+                "id=" + id +
+                ", task=" + (task != null ? task.getId() : "null") +
+                ", completedTime=" + completedTime +
+                ", errorMessage='" + (errorMessage != null ? "有错误" : "无错误") + '\'' +
+                '}';
     }
 } 

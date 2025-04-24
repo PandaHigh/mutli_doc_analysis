@@ -2,135 +2,172 @@ package com.example.multidoc.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.example.multidoc.util.StringListConverter;
 
 @Entity
+@Table(name = "analysis_tasks")
 public class AnalysisTask {
     
     @Id
-    @Column(columnDefinition = "CHAR(36)")
     private String id;
     
+    @Column(name = "task_name", nullable = false)
     private String taskName;
     
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "task_word_files", joinColumns = @JoinColumn(name = "task_id"))
-    @Column(name = "file_path")
-    private List<String> wordFilePaths = new ArrayList<>();
-    
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "task_excel_files", joinColumns = @JoinColumn(name = "task_id"))
-    @Column(name = "file_path")
-    private List<String> excelFilePaths = new ArrayList<>();
-    
+    @Column(name = "created_time", nullable = false)
     private LocalDateTime createdTime;
     
+    @Column(name = "completed_time")
+    private LocalDateTime completedTime;
+    
+    @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private TaskStatus status;
     
-    private String resultFilePath;
+    @Column
+    private int progress = 0;
     
-    private Integer chunkSize;
+    @Column(name = "last_completed_step")
+    private String lastCompletedStep = "start";
     
-    private String lastCompletedStep;
+    @Column(name = "chunk_size")
+    private Integer chunkSize = 5000;
     
-    private Integer progress;
+    @Column(name = "word_file_paths", columnDefinition = "json")
+    @Convert(converter = StringListConverter.class)
+    private List<String> wordFilePaths;
+    
+    @Column(name = "excel_file_paths", columnDefinition = "json")
+    @Convert(converter = StringListConverter.class)
+    private List<String> excelFilePaths;
+    
+    @JsonIgnore
+    @OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ExcelField> fields;
+    
+    @JsonIgnore
+    @OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<WordSentence> sentences;
     
     public enum TaskStatus {
-        PENDING,
-        PROCESSING,
-        COMPLETED,
-        FAILED
+        PENDING, RUNNING, PROCESSING, COMPLETED, FAILED, CANCELLED
     }
-
-    // Default constructor
+    
     public AnalysisTask() {
-        this.id = UUID.randomUUID().toString();
-        this.createdTime = LocalDateTime.now();
-        this.progress = 0;
-        this.status = TaskStatus.PENDING;
     }
-
+    
     // Getters and Setters
+    
     public String getId() {
         return id;
     }
-
+    
     public void setId(String id) {
         this.id = id;
     }
-
+    
     public String getTaskName() {
         return taskName;
     }
-
+    
     public void setTaskName(String taskName) {
         this.taskName = taskName;
     }
-
-    public List<String> getWordFilePaths() {
-        return wordFilePaths;
-    }
-
-    public void setWordFilePaths(List<String> wordFilePaths) {
-        this.wordFilePaths = wordFilePaths;
-    }
-
-    public List<String> getExcelFilePaths() {
-        return excelFilePaths;
-    }
-
-    public void setExcelFilePaths(List<String> excelFilePaths) {
-        this.excelFilePaths = excelFilePaths;
-    }
-
+    
     public LocalDateTime getCreatedTime() {
         return createdTime;
     }
-
+    
     public void setCreatedTime(LocalDateTime createdTime) {
         this.createdTime = createdTime;
     }
-
-    public Integer getProgress() {
-        return progress;
+    
+    public LocalDateTime getCompletedTime() {
+        return completedTime;
     }
-
-    public void setProgress(Integer progress) {
-        this.progress = progress;
+    
+    public void setCompletedTime(LocalDateTime completedTime) {
+        this.completedTime = completedTime;
     }
-
+    
     public TaskStatus getStatus() {
         return status;
     }
-
+    
     public void setStatus(TaskStatus status) {
         this.status = status;
     }
-
-    public String getResultFilePath() {
-        return resultFilePath;
+    
+    public int getProgress() {
+        return progress;
     }
-
-    public void setResultFilePath(String resultFilePath) {
-        this.resultFilePath = resultFilePath;
+    
+    public void setProgress(int progress) {
+        this.progress = progress;
     }
-
-    public Integer getChunkSize() {
-        return chunkSize;
-    }
-
-    public void setChunkSize(Integer chunkSize) {
-        this.chunkSize = chunkSize;
-    }
-
+    
     public String getLastCompletedStep() {
         return lastCompletedStep;
     }
-
+    
     public void setLastCompletedStep(String lastCompletedStep) {
         this.lastCompletedStep = lastCompletedStep;
+    }
+    
+    public Integer getChunkSize() {
+        return chunkSize;
+    }
+    
+    public void setChunkSize(Integer chunkSize) {
+        this.chunkSize = chunkSize;
+    }
+    
+    public List<String> getWordFilePaths() {
+        return wordFilePaths;
+    }
+    
+    public void setWordFilePaths(List<String> wordFilePaths) {
+        this.wordFilePaths = wordFilePaths;
+    }
+    
+    public List<String> getExcelFilePaths() {
+        return excelFilePaths;
+    }
+    
+    public void setExcelFilePaths(List<String> excelFilePaths) {
+        this.excelFilePaths = excelFilePaths;
+    }
+    
+    public List<ExcelField> getFields() {
+        return fields;
+    }
+    
+    public void setFields(List<ExcelField> fields) {
+        this.fields = fields;
+    }
+    
+    public List<WordSentence> getSentences() {
+        return sentences;
+    }
+    
+    public void setSentences(List<WordSentence> sentences) {
+        this.sentences = sentences;
+    }
+    
+    public String getResultFilePath() {
+        return "uploads/results/" + id + "_result.json";
+    }
+    
+    @Override
+    public String toString() {
+        return "AnalysisTask{" +
+                "id='" + id + '\'' +
+                ", taskName='" + taskName + '\'' +
+                ", status=" + status +
+                ", progress=" + progress +
+                ", lastCompletedStep='" + lastCompletedStep + '\'' +
+                '}';
     }
 } 

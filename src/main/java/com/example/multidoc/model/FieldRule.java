@@ -1,9 +1,10 @@
 package com.example.multidoc.model;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "field_rule")
+@Table(name = "field_rules")
 public class FieldRule {
     
     @Id
@@ -11,21 +12,24 @@ public class FieldRule {
     private Long id;
     
     @ManyToOne
-    @JoinColumn(name = "task_id")
+    @JoinColumn(name = "task_id", nullable = false)
     private AnalysisTask task;
     
-    @Column(name = "field_names", columnDefinition = "TEXT")
-    private String fieldNames; // 存储字段名称的JSON数组
+    @Column(name = "field_names", columnDefinition = "json", nullable = false)
+    private String fieldNames; // JSON格式的字段名数组
     
+    @Column(name = "rule_type", nullable = false)
     @Enumerated(EnumType.STRING)
-    @Column(name = "rule_type")
     private RuleType ruleType;
     
-    @Column(name = "rule_content", columnDefinition = "TEXT")
+    @Column(name = "rule_content", columnDefinition = "TEXT", nullable = false)
     private String ruleContent;
     
-    @Column(name = "confidence")
-    private Double confidence;
+    @Column
+    private Float confidence;
+    
+    @Column(name = "created_time")
+    private LocalDateTime createdTime = LocalDateTime.now();
     
     public enum RuleType {
         EXPLICIT, // 显式规则
@@ -77,11 +81,29 @@ public class FieldRule {
         this.ruleContent = ruleContent;
     }
 
-    public Double getConfidence() {
+    public Float getConfidence() {
         return confidence;
     }
 
-    public void setConfidence(Double confidence) {
+    public void setConfidence(Float confidence) {
         this.confidence = confidence;
+    }
+
+    public LocalDateTime getCreatedTime() {
+        return createdTime;
+    }
+
+    public void setCreatedTime(LocalDateTime createdTime) {
+        this.createdTime = createdTime;
+    }
+
+    @Override
+    public String toString() {
+        return "FieldRule{" +
+                "id=" + id +
+                ", fieldNames='" + fieldNames + '\'' +
+                ", ruleType=" + ruleType +
+                ", confidence=" + confidence +
+                '}';
     }
 } 

@@ -51,26 +51,156 @@
         .btn:hover {
             background-color: #0056b3;
         }
+        .error-message {
+            color: #dc3545;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #dc3545;
+            border-radius: 4px;
+        }
+        .markdown-content h3 {
+            color: #2c3e50;
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #eee;
+        }
+        .markdown-content p {
+            margin-bottom: 0.5rem;
+        }
+        .markdown-content strong {
+            color: #3498db;
+            font-weight: 600;
+        }
+        .markdown-content hr {
+            margin: 1.5rem 0;
+            border: none;
+            border-top: 1px solid #eee;
+        }
+        .markdown-content pre {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+            white-space: pre-wrap;
+        }
+        .pre-wrap {
+            white-space: pre-wrap;
+        }
+        .task-info {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .task-info p {
+            margin: 5px 0;
+        }
+        .task-info strong {
+            color: #2c3e50;
+        }
     </style>
+    <!-- 添加Marked.js用于Markdown渲染 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>Analysis Result for Task: <span th:text="${task.taskName}"></span></h1>
+        <h1>分析任务结果: <span th:text="${task.taskName}"></span></h1>
         
+        <!-- 任务基本信息 -->
+        <div class="task-info">
+            <p><strong>任务ID：</strong><span th:text="${task.id}"></span></p>
+            <p><strong>创建时间：</strong><span th:text="${#temporals.format(task.createdTime, 'yyyy-MM-dd HH:mm:ss')}"></span></p>
+            <p><strong>完成时间：</strong><span th:text="${task.completedTime != null ? #temporals.format(task.completedTime, 'yyyy-MM-dd HH:mm:ss') : '未完成'}"></span></p>
+            <p><strong>状态：</strong><span th:text="${task.status}"></span></p>
+        </div>
+        
+        <div th:if="${error}" class="error-message" th:text="${error}"></div>
+        
+        <!-- 分析报告 -->
         <div class="section">
-            <h2>Field Rules</h2>
-            <div class="field-rules">
-                <div th:each="rule : ${fieldRules}" class="rule-item">
-                    <div class="rule-type" th:text="${rule.fieldName}"></div>
-                    <div class="rule-content" th:text="${rule.ruleContent}"></div>
-                    <div class="confidence" th:text="'Confidence: ' + ${#numbers.formatDecimal(rule.confidence, 1, 2)}"></div>
+            <h2>分析报告</h2>
+            <div id="analysisReport" class="markdown-content">
+                <div th:if="${result != null && result.summaryText != null && !result.summaryText.isEmpty()}" 
+                     class="pre-wrap" 
+                     th:text="${result.summaryText}">
+                </div>
+                <div th:if="${result == null || result.summaryText == null || result.summaryText.isEmpty()}">
+                    未找到分析报告。
                 </div>
             </div>
         </div>
         
+        <!-- 字段规则列表 -->
         <div class="section">
-            <a th:href="@{/task/{taskId}/export(taskId=${task.id})}" class="btn">Export Results</a>
+            <h2>规则列表</h2>
+            <div class="field-rules">
+                <div th:if="${fieldRules != null && !fieldRules.empty}">
+                    <div th:each="rule : ${fieldRules}" class="rule-item">
+                        <div class="rule-type">
+                            <strong>字段：</strong>
+                            <span class="field-names" th:attr="data-field-names=${rule.fieldNames}"></span>
+                        </div>
+                        <div class="rule-content">
+                            <strong>规则类型：</strong>
+                            <span th:text="${rule.ruleType}"></span>
+                        </div>
+                        <div class="rule-content pre-wrap">
+                            <strong>规则内容：</strong>
+                            <span th:text="${rule.ruleContent}"></span>
+                        </div>
+                        <div class="confidence">
+                            <strong>置信度：</strong>
+                            <span th:text="${#numbers.formatDecimal(rule.confidence, 1, 2)}"></span>
+                        </div>
+                    </div>
+                </div>
+                <div th:if="${fieldRules == null || fieldRules.empty}">
+                    未找到字段规则。
+                </div>
+            </div>
+        </div>
+        
+        <!-- 操作按钮 -->
+        <div class="section">
+            <a th:href="@{/task/{taskId}/export(taskId=${task.id})}" class="btn">导出结果</a>
+            <a th:href="@{/}" class="btn" style="background-color: #6c757d;">返回首页</a>
         </div>
     </div>
+
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        document.addEventListener('DOMContentLoaded', function() {
+            // 渲染分析报告Markdown
+            const analysisReport = document.getElementById('analysisReport');
+            if (analysisReport && analysisReport.textContent.trim() !== '未找到分析报告。') {
+                try {
+                    const reportText = analysisReport.textContent.trim();
+                    const htmlContent = marked.parse(reportText);
+                    analysisReport.innerHTML = htmlContent;
+                } catch (e) {
+                    console.error('无法渲染Markdown:', e);
+                    analysisReport.innerHTML = '<div class="alert alert-danger">无法渲染报告内容</div>';
+                }
+            }
+            
+            // 解析并显示字段名称
+            const fieldNameElements = document.querySelectorAll('.field-names');
+            fieldNameElements.forEach(function(element) {
+                const fieldNamesJson = element.getAttribute('data-field-names');
+                if (fieldNamesJson) {
+                    try {
+                        const fieldNames = JSON.parse(fieldNamesJson);
+                        const displayNames = Array.isArray(fieldNames) ? fieldNames.join(', ') : fieldNamesJson;
+                        element.textContent = displayNames;
+                    } catch (e) {
+                        console.error('解析字段名失败:', e);
+                        element.textContent = fieldNamesJson;
+                    }
+                }
+            });
+        });
+        /*]]>*/
+    </script>
 </body>
 </html> 

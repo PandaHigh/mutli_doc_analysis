@@ -2,8 +2,8 @@ package com.example.multidoc.service;
 
 import com.example.multidoc.config.FileStorageConfig;
 import com.example.multidoc.model.AnalysisTask;
-import com.example.multidoc.model.WordChunk;
-import com.example.multidoc.repository.WordChunkRepository;
+import com.example.multidoc.model.WordSentence;
+import com.example.multidoc.repository.WordSentenceRepository;
 import com.example.multidoc.util.ExcelProcessor;
 import com.example.multidoc.util.WordProcessor;
 import org.slf4j.Logger;
@@ -24,9 +24,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -44,7 +42,7 @@ public class DocumentService {
     private ExcelProcessor excelProcessor;
 
     @Autowired
-    private WordChunkRepository wordChunkRepository;
+    private WordSentenceRepository wordSentenceRepository;
 
     /**
      * 保存上传的Word文档
@@ -92,20 +90,9 @@ public class DocumentService {
     }
 
     /**
-     * 处理Word文档
+     * 处理Word文档 - 以句子为单位
      */
-    public void processWordDocuments(AnalysisTask task) {
-        processWordDocuments(task, 5000); // 默认块大小为5000字符
-    }
-
-    /**
-     * 处理Word文档
-     * @param task 分析任务
-     * @param chunkSize 文本块大小（字符数）
-     */
-    public void processWordDocuments(AnalysisTask task, int chunkSize) {
-        task.setChunkSize(chunkSize);
-        
+    public void processWordDocuments(AnalysisTask task) throws IOException {
         // 创建一个临时文件来存储所有文档的拼接内容
         StringBuilder allContent = new StringBuilder();
         int currentPosition = 0;
@@ -162,60 +149,61 @@ public class DocumentService {
                 document.write(fos);
             }
             
-            // 使用processDocument方法对临时文件进行分块
-            List<WordChunk> chunks = WordProcessor.processDocument(tempFile, chunkSize);
+            // 使用 processSentences 方法对临时文件进行句子拆分
+            List<WordProcessor.WordSentenceInfo> sentences = wordProcessor.processSentences(tempFile);
             
-            // 保存分块结果
-            for (int i = 0; i < chunks.size(); i++) {
-                WordChunk chunk = chunks.get(i);
-                String chunkContent = chunk.getContent();
+            // 保存句子结果
+            for (int i = 0; i < sentences.size(); i++) {
+                WordProcessor.WordSentenceInfo sentenceInfo = sentences.get(i);
+                String sentenceContent = sentenceInfo.getContent();
                 
-                // 确定这个块属于哪个源文件
-                String sourceFile = determineSourceFile(filePositions, chunk.getStartPosition(), chunk.getEndPosition());
+                // 确定这个句子属于哪个源文件
+                String sourceFile = determineSourceFile(filePositions, sentenceInfo.getStartPosition(), sentenceInfo.getEndPosition());
                 
-                // 更新块信息并保存
-                chunk.setTask(task);
-                chunk.setSourceFile(sourceFile);
-                chunk.setChunkIndex(i);
-                wordChunkRepository.save(chunk);
+                // 创建并保存 WordSentence 实体
+                WordSentence sentence = new WordSentence();
+                sentence.setTask(task);
+                sentence.setSentenceIndex(sentenceInfo.getSentenceIndex());
+                sentence.setContent(sentenceContent);
+                sentence.setSourceFile(sourceFile);
+                sentence.setStartPosition(sentenceInfo.getStartPosition());
+                sentence.setEndPosition(sentenceInfo.getEndPosition());
+                
+                wordSentenceRepository.save(sentence);
             }
             
-        } catch (Exception e) {
-            logger.error("处理拼接文档失败", e);
-            throw new RuntimeException("处理拼接文档失败: " + e.getMessage(), e);
+            logger.info("成功处理和保存 {} 个句子", sentences.size());
+            
         } finally {
-            // 删除临时文件
             if (tempFile != null && tempFile.exists()) {
-                tempFile.delete();
+                try {
+                    Files.delete(tempFile.toPath());
+                } catch (IOException e) {
+                    logger.warn("删除临时文件失败: " + tempFile.getPath(), e);
+                }
             }
         }
     }
-    
-    // 辅助类：记录文件位置信息
+
+    /**
+     * 用于跟踪文件位置的内部类
+     */
     private static class FilePosition {
         String fileName;
         int startPosition;
         int endPosition;
     }
-    
-    // 确定文本块属于哪个源文件
+
+    /**
+     * 根据位置确定句子属于哪个源文件
+     */
     private String determineSourceFile(List<FilePosition> filePositions, int start, int end) {
         for (FilePosition pos : filePositions) {
             if (start >= pos.startPosition && end <= pos.endPosition) {
                 return pos.fileName;
             }
         }
-        // 如果找不到完全匹配的文件，返回包含最多内容的文件
-        int maxOverlap = 0;
-        String bestMatch = null;
-        for (FilePosition pos : filePositions) {
-            int overlap = Math.min(end, pos.endPosition) - Math.max(start, pos.startPosition);
-            if (overlap > maxOverlap) {
-                maxOverlap = overlap;
-                bestMatch = pos.fileName;
-            }
-        }
-        return bestMatch;
+        return "unknown";
     }
 
     /**
@@ -237,28 +225,19 @@ public class DocumentService {
     }
 
     /**
-     * 获取指定任务的所有Word块内容
-     * @param task 分析任务
-     * @return Word块内容列表
+     * 处理Excel文件并提取字段信息
+     * @param filePath Excel文件路径
+     * @return 字段信息列表
      */
-    public List<String> getWordChunksContent(AnalysisTask task) {
-        List<String> contents = new ArrayList<>();
-        
-        // 获取当前任务的所有文档源文件名
-        Set<String> sourceFiles = new HashSet<>();
-        for (String filePath : task.getWordFilePaths()) {
-            File file = new File(filePath);
-            sourceFiles.add(file.getName());
+    public List<ExcelProcessor.ElementInfo> processExcelFile(String filePath) {
+        try {
+            logger.info("开始处理Excel文件: {}", filePath);
+            List<ExcelProcessor.ElementInfo> fields = excelProcessor.extractFields(filePath);
+            logger.info("成功从Excel文件中提取 {} 个字段", fields.size());
+            return fields;
+        } catch (Exception e) {
+            logger.error("处理Excel文件失败: " + filePath, e);
+            throw new RuntimeException("处理Excel文件失败: " + e.getMessage(), e);
         }
-        
-        // 只获取当前任务上传的文档块
-        for (String sourceFile : sourceFiles) {
-            List<WordChunk> chunks = wordChunkRepository.findByTaskAndSourceFileOrderByChunkIndex(task, sourceFile);
-            for (WordChunk chunk : chunks) {
-                contents.add(chunk.getContent());
-            }
-        }
-        
-        return contents;
     }
 } 

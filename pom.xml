@@ -21,6 +21,7 @@
         <spring-ai.version>0.8.0</spring-ai.version>
         <poi.version>5.2.3</poi.version>
         <langchain4j.version>0.27.1</langchain4j.version>
+        <lucene.version>9.8.0</lucene.version>
     </properties>
     
     <dependencies>
@@ -95,6 +96,23 @@
             <artifactId>lombok</artifactId>
             <version>1.18.30</version>
             <scope>provided</scope>
+        </dependency>
+
+        <!-- Apache Lucene 依赖 -->
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-core</artifactId>
+            <version>${lucene.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-queryparser</artifactId>
+            <version>${lucene.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-analysis-common</artifactId>
+            <version>${lucene.version}</version>
         </dependency>
     </dependencies>
     

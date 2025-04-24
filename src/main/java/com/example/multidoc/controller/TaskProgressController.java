@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.stream.Collectors;
 
 @Controller
 @RequestMapping("/task")
@@ -37,13 +39,28 @@ public class TaskProgressController {
         AnalysisTask task = taskService.getTaskById(id);
         Map<String, Object> progress = analysisService.getTaskProgress(id);
         
+        // 获取任务日志
+        List<TaskLog> taskLogs = taskService.getTaskLogs(id);
+        
+        // 格式化日志数据
+        List<Map<String, Object>> formattedLogs = taskLogs.stream()
+            .map(log -> {
+                Map<String, Object> formattedLog = new HashMap<>();
+                formattedLog.put("timestamp", log.getLogTime().toString());
+                formattedLog.put("step", log.getLogLevel()); // 使用logLevel作为step
+                formattedLog.put("message", log.getMessage());
+                formattedLog.put("progress", task.getProgress()); // 使用任务当前进度
+                return formattedLog;
+            })
+            .collect(Collectors.toList());
+        
         return ResponseEntity.ok(Map.of(
-            "overallProgress", progress.get("overallProgress"),
-            "currentStep", progress.get("currentStep"),
-            "currentStepProgress", progress.get("currentStepProgress"),
-            "currentStepMessage", progress.get("currentStepMessage"),
+            "overallProgress", progress.get("progress"),
+            "currentStep", progress.get("lastCompletedStep"),
+            "currentStepProgress", task.getProgress(),
+            "currentStepMessage", "当前步骤: " + progress.get("lastCompletedStep"),
             "status", task.getStatus().name(),
-            "logs", progress.get("detailedLogs")
+            "logs", formattedLogs
         ));
     }
 

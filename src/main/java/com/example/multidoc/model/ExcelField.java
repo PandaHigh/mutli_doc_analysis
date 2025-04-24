@@ -1,9 +1,11 @@
 package com.example.multidoc.model;
 
 import jakarta.persistence.*;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
-@Table(uniqueConstraints = {
+@Table(name = "excel_fields", uniqueConstraints = {
     @UniqueConstraint(columnNames = {"task_id", "table_name", "field_name"})
 })
 public class ExcelField {
@@ -27,7 +29,10 @@ public class ExcelField {
     
     @Column(length = 1000)
     private String description;
-
+    
+    @Column(name = "category")
+    private String category;
+    
     // Default constructor
     public ExcelField() {
     }
@@ -79,5 +84,13 @@ public class ExcelField {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
     }
 } 
