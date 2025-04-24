@@ -7,6 +7,7 @@
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
+            background-color: #f8f9fa;
         }
         .container {
             max-width: 1200px;
@@ -17,15 +18,29 @@
             padding: 20px;
             border: 1px solid #ddd;
             border-radius: 5px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
         .field-rules {
             margin-top: 20px;
         }
         .rule-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+            transition: all 0.3s ease;
+        }
+        .rule-item:hover {
+            box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .rule-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 10px;
-            padding: 10px;
-            background-color: #f5f5f5;
-            border-radius: 3px;
         }
         .rule-type {
             font-weight: bold;
@@ -33,10 +48,26 @@
         }
         .rule-content {
             margin-left: 20px;
+            line-height: 1.5;
         }
         .confidence {
             color: #666;
             font-size: 0.9em;
+            display: flex;
+            align-items: center;
+        }
+        .confidence-bar {
+            display: inline-block;
+            height: 6px;
+            width: 100px;
+            background-color: #e0e0e0;
+            margin-left: 8px;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .confidence-fill {
+            height: 100%;
+            background-color: #4caf50;
         }
         .btn {
             display: inline-block;
@@ -47,6 +78,7 @@
             border-radius: 4px;
             border: none;
             cursor: pointer;
+            transition: background-color 0.3s;
         }
         .btn:hover {
             background-color: #0056b3;
@@ -92,12 +124,81 @@
             padding: 15px;
             background-color: #f8f9fa;
             border-radius: 5px;
+            border-left: 4px solid #007bff;
         }
         .task-info p {
             margin: 5px 0;
         }
         .task-info strong {
             color: #2c3e50;
+        }
+        .category-filter {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-radius: 5px;
+        }
+        .filter-label {
+            font-weight: bold;
+            margin-right: 10px;
+            color: #2c3e50;
+        }
+        .filter-select {
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 7px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+        .badge-explicit {
+            background-color: #e3f2fd;
+            color: #0d47a1;
+        }
+        .badge-implicit {
+            background-color: #fff8e1;
+            color: #ff8f00;
+        }
+        .rule-fields {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .field-tag {
+            background-color: #e1f5fe;
+            color: #0277bd;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+        .search-box {
+            margin-bottom: 15px;
+        }
+        .search-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .rules-count {
+            color: #6c757d;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+        .rule-expand-btn {
+            background: none;
+            border: none;
+            color: #007bff;
+            cursor: pointer;
+            font-size: 0.9em;
+            padding: 0;
+            text-decoration: underline;
         }
     </style>
     <!-- 添加Marked.js用于Markdown渲染 -->
@@ -134,30 +235,60 @@
         <!-- 字段规则列表 -->
         <div class="section">
             <h2>规则列表</h2>
-            <div class="field-rules">
-                <div th:if="${fieldRules != null && !fieldRules.empty}">
-                    <div th:each="rule : ${fieldRules}" class="rule-item">
-                        <div class="rule-type">
-                            <strong>字段：</strong>
-                            <span class="field-names" th:attr="data-field-names=${rule.fieldNames}"></span>
+            <div th:if="${fieldRules != null && !fieldRules.empty}">
+                <!-- 规则搜索框 -->
+                <div class="search-box">
+                    <input type="text" id="ruleSearch" class="search-input" placeholder="搜索规则内容或字段名称...">
+                </div>
+                
+                <!-- 规则类型过滤器 -->
+                <div class="category-filter">
+                    <span class="filter-label">规则类型:</span>
+                    <select id="ruleTypeFilter" class="filter-select">
+                        <option value="ALL">全部</option>
+                        <option value="EXPLICIT">显式规则</option>
+                        <option value="IMPLICIT">隐含规则</option>
+                    </select>
+                </div>
+                
+                <!-- 规则计数显示 -->
+                <div class="rules-count">
+                    显示 <span id="visibleRulesCount">0</span> / <span id="totalRulesCount" th:text="${fieldRules.size()}"></span> 条规则
+                </div>
+                
+                <div class="field-rules" id="rulesContainer">
+                    <div th:each="rule : ${fieldRules}" class="rule-item" th:attr="data-rule-type=${rule.ruleType}">
+                        <div class="rule-header">
+                            <div class="rule-type">
+                                <span>规则</span>
+                                <span th:if="${rule.ruleType == T(com.example.multidoc.model.FieldRule.RuleType).EXPLICIT}" class="badge badge-explicit">显式</span>
+                                <span th:if="${rule.ruleType == T(com.example.multidoc.model.FieldRule.RuleType).IMPLICIT}" class="badge badge-implicit">隐含</span>
+                            </div>
+                            <div class="confidence">
+                                <span>置信度: </span>
+                                <strong th:text="${#numbers.formatDecimal(rule.confidence, 1, 2)}"></strong>
+                                <div class="confidence-bar">
+                                    <div class="confidence-fill" th:style="'width:' + ${rule.confidence * 100} + '%'"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="rule-content">
-                            <strong>规则类型：</strong>
-                            <span th:text="${rule.ruleType}"></span>
+                        
+                        <div class="rule-fields">
+                            <strong>相关字段: </strong>
+                            <div class="field-names" th:attr="data-field-names=${rule.fieldNames}"></div>
                         </div>
+                        
                         <div class="rule-content pre-wrap">
-                            <strong>规则内容：</strong>
-                            <span th:text="${rule.ruleContent}"></span>
-                        </div>
-                        <div class="confidence">
-                            <strong>置信度：</strong>
-                            <span th:text="${#numbers.formatDecimal(rule.confidence, 1, 2)}"></span>
+                            <strong>规则内容:</strong>
+                            <div class="rule-content-text" th:text="${rule.ruleContent.length() > 150 ? rule.ruleContent.substring(0, 150) + '...' : rule.ruleContent}"></div>
+                            <div class="rule-content-full" style="display: none;" th:text="${rule.ruleContent}"></div>
+                            <button class="rule-expand-btn" th:if="${rule.ruleContent.length() > 150}">展开全文</button>
                         </div>
                     </div>
                 </div>
-                <div th:if="${fieldRules == null || fieldRules.empty}">
-                    未找到字段规则。
-                </div>
+            </div>
+            <div th:if="${fieldRules == null || fieldRules.empty}">
+                未找到字段规则。
             </div>
         </div>
         
@@ -191,14 +322,84 @@
                 if (fieldNamesJson) {
                     try {
                         const fieldNames = JSON.parse(fieldNamesJson);
-                        const displayNames = Array.isArray(fieldNames) ? fieldNames.join(', ') : fieldNamesJson;
-                        element.textContent = displayNames;
+                        if (Array.isArray(fieldNames)) {
+                            element.innerHTML = fieldNames.map(name => 
+                                `<span class="field-tag">${name}</span>`
+                            ).join('');
+                        } else {
+                            element.textContent = fieldNamesJson;
+                        }
                     } catch (e) {
                         console.error('解析字段名失败:', e);
                         element.textContent = fieldNamesJson;
                     }
                 }
             });
+            
+            // 规则搜索功能
+            const searchInput = document.getElementById('ruleSearch');
+            const ruleTypeFilter = document.getElementById('ruleTypeFilter');
+            const rulesContainer = document.getElementById('rulesContainer');
+            const visibleRulesCount = document.getElementById('visibleRulesCount');
+            const totalRulesCount = document.getElementById('totalRulesCount');
+            const ruleItems = rulesContainer.querySelectorAll('.rule-item');
+            
+            // 展开/收起规则内容
+            document.querySelectorAll('.rule-expand-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const contentWrapper = this.parentElement;
+                    const shortText = contentWrapper.querySelector('.rule-content-text');
+                    const fullText = contentWrapper.querySelector('.rule-content-full');
+                    
+                    if (shortText.style.display !== 'none') {
+                        shortText.style.display = 'none';
+                        fullText.style.display = 'block';
+                        this.textContent = '收起';
+                    } else {
+                        shortText.style.display = 'block';
+                        fullText.style.display = 'none';
+                        this.textContent = '展开全文';
+                    }
+                });
+            });
+            
+            // 过滤规则函数
+            function filterRules() {
+                const searchTerm = searchInput.value.toLowerCase();
+                const selectedType = ruleTypeFilter.value;
+                let visibleCount = 0;
+                
+                ruleItems.forEach(item => {
+                    const ruleType = item.getAttribute('data-rule-type');
+                    const ruleContent = item.querySelector('.rule-content-full') 
+                        ? item.querySelector('.rule-content-full').textContent.toLowerCase() 
+                        : item.querySelector('.rule-content-text').textContent.toLowerCase();
+                    const fieldTags = Array.from(item.querySelectorAll('.field-tag'))
+                        .map(tag => tag.textContent.toLowerCase());
+                    
+                    const matchesSearch = searchTerm === '' || 
+                        ruleContent.includes(searchTerm) || 
+                        fieldTags.some(tag => tag.includes(searchTerm));
+                    
+                    const matchesType = selectedType === 'ALL' || ruleType === selectedType;
+                    
+                    if (matchesSearch && matchesType) {
+                        item.style.display = 'block';
+                        visibleCount++;
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+                
+                visibleRulesCount.textContent = visibleCount;
+            }
+            
+            // 初始化过滤器和计数
+            filterRules();
+            
+            // 添加事件监听器
+            searchInput.addEventListener('input', filterRules);
+            ruleTypeFilter.addEventListener('change', filterRules);
         });
         /*]]>*/
     </script>

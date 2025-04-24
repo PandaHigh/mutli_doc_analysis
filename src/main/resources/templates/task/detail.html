@@ -267,173 +267,30 @@
 
         // Load analysis result (if task is completed)
         function loadAnalysisResult() {
-            if (!result || !result.resultJson) {
-                console.error('Result or resultJson is missing.');
+            if (!result || !result.resultText) {
+                console.error('Result or resultText is missing.');
                 return;
             }
             try {
-                console.log('Processing result text:', result.resultJson); // Debug log
+                console.log('Processing result text:', result.resultText); // Debug log
                 
-                // 尝试解析 JSON，如果失败则直接使用文本
-                let resultData;
-                try {
-                    resultData = JSON.parse(result.resultJson);
-                } catch (jsonError) {
-                    console.warn('Result is not valid JSON, using as text:', jsonError);
-                    // 创建一个包含文本内容的模拟数据对象
-                    resultData = {
-                        report: result.resultJson,
-                        compiledRules: '',
-                        fieldRules: []
-                    };
-                }
+                // 直接使用文本内容，不尝试解析JSON
+                let resultData = {
+                    report: result.resultText,
+                    compiledRules: '',
+                    fieldRules: []
+                };
                 
-                // 显示编译后的规则
-                const compiledRulesElement = document.getElementById('compiledRules');
-                if (compiledRulesElement) {
-                    const rulesMarkdown = resultData.compiledRules || '未找到编译后的规则。';
-                    compiledRulesElement.innerHTML = marked.parse(rulesMarkdown);
-                }
-
-                // 显示原始规则
-                const fieldRulesElement = document.getElementById('fieldRules');
-                if (fieldRulesElement) {
-                    const fieldRules = resultData.fieldRules || [];
-                    console.log('Field Rules Data:', fieldRules); // 添加调试日志
-                    
-                    if (!fieldRules || fieldRules.length === 0) {
-                        fieldRulesElement.innerHTML = marked.parse('未找到原始规则。');
-                        return;
-                    }
-
-                    let fieldRulesMarkdown = '';
-                    
-                    try {
-                        // 直接遍历fieldRules数组
-                        fieldRules.forEach(rule => {
-                            if (!rule) return; // 跳过无效规则
-                            
-                            // 处理字段名
-                            let fieldNames = [];
-                            if (Array.isArray(rule.fieldNames)) {
-                                fieldNames = rule.fieldNames;
-                            } else if (typeof rule.fieldNames === 'string') {
-                                try {
-                                    const parsed = JSON.parse(rule.fieldNames);
-                                    fieldNames = Array.isArray(parsed) ? parsed : [rule.fieldNames];
-                                } catch (e) {
-                                    fieldNames = [rule.fieldNames];
-                                }
-                            } else if (rule.fieldName) {
-                                fieldNames = Array.isArray(rule.fieldName) ? rule.fieldName : [rule.fieldName];
-                            }
-                            
-                            // 过滤空字段名并去重
-                            fieldNames = [...new Set(fieldNames.filter(name => name && name.trim()))];
-                            
-                            // 处理规则类型
-                            const ruleType = rule.ruleType || rule.type || '未知类型';
-                            
-                            // 处理规则内容
-                            let content = rule.ruleContent || rule.content || '无内容';
-                            // 确保内容中的换行符被正确显示
-                            content = content.replace(/\n/g, '\n  ');
-                            
-                            // 生成规则展示
-                            fieldRulesMarkdown += `### 规则 ${fieldRules.indexOf(rule) + 1}\n\n`;
-                            fieldRulesMarkdown += `**字段**: ${fieldNames.join(', ')}\n\n`;
-                            fieldRulesMarkdown += `**类型**: ${ruleType}\n\n`;
-                            fieldRulesMarkdown += `**内容**: ${content}\n\n`;
-                            fieldRulesMarkdown += `---\n\n`;
-                        });
-                    } catch (e) {
-                        console.error('处理原始规则时出错:', e);
-                        fieldRulesMarkdown = '处理规则数据时出错: ' + e.message;
-                    }
-
-                    if (fieldRulesMarkdown === '') {
-                        fieldRulesMarkdown = '未找到有效的规则数据。';
-                    }
-
-                    // 添加样式
-                    const style = `
-                        <style>
-                            .markdown-content h3 {
-                                color: #2c3e50;
-                                margin-top: 1.5rem;
-                                margin-bottom: 1rem;
-                                padding-bottom: 0.5rem;
-                                border-bottom: 1px solid #eee;
-                            }
-                            .markdown-content p {
-                                margin-bottom: 0.5rem;
-                            }
-                            .markdown-content strong {
-                                color: #3498db;
-                                font-weight: 600;
-                            }
-                            .markdown-content hr {
-                                margin: 1.5rem 0;
-                                border: none;
-                                border-top: 1px solid #eee;
-                            }
-                            .markdown-content pre {
-                                background-color: #f8f9fa;
-                                padding: 1rem;
-                                border-radius: 4px;
-                                margin: 0.5rem 0;
-                                white-space: pre-wrap;
-                            }
-                        </style>
-                    `;
-                    
-                    fieldRulesElement.innerHTML = style + marked.parse(fieldRulesMarkdown);
-                }
-
                 // 显示分析报告
                 const reportElement = document.getElementById('analysisReport');
                 if (reportElement) {
-                    let markdownContent = '未找到分析报告。';
-                    
-                    try {
-                        if (resultData.report) {
-                            if (typeof resultData.report === 'string') {
-                                markdownContent = resultData.report;
-                            } else if (resultData.report.summary) {
-                                markdownContent = resultData.report.summary;
-                            } else if (resultData.report.content) {
-                                markdownContent = resultData.report.content;
-                            } else if (resultData.report.error) {
-                                markdownContent = `生成报告时出错：${resultData.report.error}`;
-                            } else {
-                                // 尝试将整个report转为字符串
-                                markdownContent = JSON.stringify(resultData.report, null, 2);
-                            }
-                        } else if (resultData.analysisReport) {
-                            // 尝试alternative属性名
-                            if (typeof resultData.analysisReport === 'string') {
-                                markdownContent = resultData.analysisReport;
-                            } else if (typeof resultData.analysisReport === 'object') {
-                                markdownContent = JSON.stringify(resultData.analysisReport, null, 2);
-                            }
-                        }
-                    } catch (e) {
-                        console.error('处理分析报告时出错:', e);
-                        markdownContent = '处理分析报告时出错: ' + e.message;
-                    }
-                    
-                    reportElement.innerHTML = marked.parse(markdownContent);
+                    reportElement.innerHTML = marked.parse(result.resultText);
                 }
 
                 // 显示统计信息
                 const fieldCountElement = document.getElementById('fieldCount');
-                if (fieldCountElement) {
-                    fieldCountElement.textContent = resultData.fieldCount || '0';
-                }
-
-                const ruleCountElement = document.getElementById('ruleCount');
-                if (ruleCountElement) {
-                    ruleCountElement.textContent = resultData.ruleCount || (resultData.fieldRules ? resultData.fieldRules.length : '0');
+                if (fieldCountElement && result.fieldCount) {
+                    fieldCountElement.textContent = result.fieldCount;
                 }
 
             } catch (e) {

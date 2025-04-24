@@ -18,8 +18,8 @@ public class AnalysisResult {
     @Column(name = "completed_time")
     private LocalDateTime completedTime;
     
-    @Column(name = "result_json", columnDefinition = "TEXT")
-    private String resultJson;
+    @Column(name = "result_text", columnDefinition = "TEXT")
+    private String resultText;
     
     @Column(name = "summary_text", columnDefinition = "TEXT")
     private String summaryText;
@@ -59,12 +59,12 @@ public class AnalysisResult {
         this.completedTime = completedTime;
     }
 
-    public String getResultJson() {
-        return resultJson;
+    public String getResultText() {
+        return resultText;
     }
 
-    public void setResultJson(String resultJson) {
-        this.resultJson = resultJson;
+    public void setResultText(String resultText) {
+        this.resultText = resultText;
     }
 
     public String getSummaryText() {

@@ -516,7 +516,7 @@ public class AnalysisService {
             AnalysisResult analysisResult = new AnalysisResult();
             analysisResult.setTask(task);
             analysisResult.setCompletedTime(LocalDateTime.now());
-            analysisResult.setResultJson(resultText.toString());
+            analysisResult.setResultText(resultText.toString());
             analysisResult.setFieldCount(fields.size());
             analysisResult.setSummaryText(analysisReport);
             resultRepository.save(analysisResult);
@@ -655,7 +655,7 @@ public class AnalysisService {
             Path filePath = exportDir.resolve(fileName);
             
             try (FileWriter writer = new FileWriter(filePath.toFile())) {
-                writer.write(result.getResultJson());
+                writer.write(result.getResultText());
             }
             
             logger.info("Exported result to: {}", filePath);

@@ -70,7 +70,7 @@ CREATE TABLE analysis_results (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     task_id VARCHAR(36) NOT NULL,
     completed_time TIMESTAMP,
-    result_json TEXT,
+    result_text TEXT,
     summary_text TEXT,
     field_count INTEGER,
     error_message TEXT
