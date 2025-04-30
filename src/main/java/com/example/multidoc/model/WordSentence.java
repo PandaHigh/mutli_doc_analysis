@@ -3,6 +3,7 @@ package com.example.multidoc.model;
 import jakarta.persistence.*;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.Objects;
 
 @Entity
 @Table(name = "word_sentences")
@@ -88,6 +89,29 @@ public class WordSentence {
 
     public void setEndPosition(int endPosition) {
         this.endPosition = endPosition;
+    }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        
+        WordSentence that = (WordSentence) o;
+        
+        if (id != null && that.id != null) {
+            return Objects.equals(id, that.id);
+        }
+        
+        return Objects.equals(content, that.content) && 
+               Objects.equals(sourceFile, that.sourceFile);
+    }
+    
+    @Override
+    public int hashCode() {
+        if (id != null) {
+            return Objects.hash(id);
+        }
+        return Objects.hash(content, sourceFile);
     }
 
     @Override

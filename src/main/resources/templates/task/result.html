@@ -47,8 +47,21 @@
             color: #333;
         }
         .rule-content {
-            margin-left: 20px;
+            margin-top: 10px;
+            margin-left: 0;
             line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .rule-content strong {
+            margin-bottom: 5px;
+            display: block;
+        }
+        .rule-content-text, .rule-content-full {
+            width: 100%;
+            margin-left: 0;
+            padding-left: 0;
         }
         .confidence {
             color: #666;
@@ -169,6 +182,17 @@
             flex-wrap: wrap;
             gap: 5px;
             margin-top: 5px;
+            align-items: flex-start;
+            width: 100%;
+        }
+        .rule-fields strong {
+            margin-right: 8px;
+            min-width: 70px;
+        }
+        .field-names {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
         }
         .field-tag {
             background-color: #e1f5fe;
@@ -219,7 +243,7 @@
         <div th:if="${error}" class="error-message" th:text="${error}"></div>
         
         <!-- 分析报告 -->
-        <div class="section">
+        <!-- <div class="section">
             <h2>分析报告</h2>
             <div id="analysisReport" class="markdown-content">
                 <div th:if="${result != null && result.summaryText != null && !result.summaryText.isEmpty()}" 
@@ -231,7 +255,7 @@
                 </div>
             </div>
         </div>
-        
+         -->
         <!-- 字段规则列表 -->
         <div class="section">
             <h2>规则列表</h2>
@@ -274,11 +298,11 @@
                         </div>
                         
                         <div class="rule-fields">
-                            <strong>相关字段: </strong>
+                            <strong>相关字段:</strong>
                             <div class="field-names" th:attr="data-field-names=${rule.fieldNames}"></div>
                         </div>
                         
-                        <div class="rule-content pre-wrap">
+                        <div class="rule-content">
                             <strong>规则内容:</strong>
                             <div class="rule-content-text" th:text="${rule.ruleContent.length() > 150 ? rule.ruleContent.substring(0, 150) + '...' : rule.ruleContent}"></div>
                             <div class="rule-content-full" style="display: none;" th:text="${rule.ruleContent}"></div>
