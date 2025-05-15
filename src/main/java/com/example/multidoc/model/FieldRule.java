@@ -15,7 +15,7 @@ public class FieldRule {
     @JoinColumn(name = "task_id", nullable = false)
     private AnalysisTask task;
     
-    @Column(name = "field_names", columnDefinition = "json", nullable = false)
+    @Column(name = "field_names", columnDefinition = "TEXT", nullable = false)
     private String fieldNames; // JSON格式的字段名数组
     
     @Column(name = "rule_type", nullable = false)

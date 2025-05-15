@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>验证规则</title>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .task-info {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f0f9ff;
+            border-radius: 5px;
+            border-left: 4px solid #17a2b8;
+        }
+        .task-info p {
+            margin: 5px 0;
+        }
+        .task-info strong {
+            color: #2c3e50;
+        }
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn-submit {
+            background-color: #28a745;
+        }
+        .btn-submit:hover {
+            background-color: #218838;
+        }
+        .error-message {
+            color: #dc3545;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #dc3545;
+            border-radius: 4px;
+        }
+        .file-input-container {
+            margin-bottom: 20px;
+        }
+        .file-input-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .file-input {
+            display: block;
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+        }
+        .file-input:hover {
+            border-color: #007bff;
+        }
+        .hint {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        .upload-panel {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .upload-panel h3 {
+            color: #17a2b8;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>验证规则</h1>
+        
+        <!-- 任务基本信息 -->
+        <div class="task-info">
+            <p><strong>任务ID：</strong><span th:text="${task.id}"></span></p>
+            <p><strong>任务名称：</strong><span th:text="${task.taskName}"></span></p>
+            <p><strong>创建时间：</strong><span th:text="${#temporals.format(task.createdTime, 'yyyy-MM-dd HH:mm:ss')}"></span></p>
+        </div>
+        
+        <div th:if="${error}" class="error-message" th:text="${error}"></div>
+        
+        <div class="section">
+            <div class="upload-panel">
+                <h3>上传Excel文件</h3>
+                <p>请上传Excel文件以验证现有规则并发现新规则。系统将分析Excel数据并与现有规则进行对比。</p>
+                
+                <form id="validationForm" th:action="@{/task/{taskId}/validate(taskId=${task.id})}" method="post" enctype="multipart/form-data">
+                    <div class="file-input-container">
+                        <label for="excelFiles" class="file-input-label">选择Excel文件</label>
+                        <input type="file" id="excelFiles" name="excelFiles" class="file-input" accept=".xlsx,.xls" multiple required>
+                        <p class="hint">可以选择多个Excel文件，支持.xlsx和.xls格式</p>
+                    </div>
+                    
+                    <button type="submit" id="submitBtn" class="btn btn-submit">开始验证</button>
+                    <a th:href="@{/task/{taskId}/result(taskId=${task.id})}" class="btn" style="background-color: #6c757d;">返回结果页面</a>
+                </form>
+            </div>
+            
+            <div class="instructions">
+                <h3>处理流程说明</h3>
+                <ol>
+                    <li>上传Excel文件后，系统将立即开始处理</li>
+                    <li>Excel文件将被转换为结构化的MD格式数据</li>
+                    <li>系统会将现有规则和MD格式数据提交给AI分析引擎</li>
+                    <li>AI引擎会验证现有规则在新数据中的有效性</li>
+                    <li>同时，AI引擎也会尝试从新数据中发现新的规则</li>
+                    <li>分析完成后，系统会展示验证结果和新发现的规则</li>
+                </ol>
+                <p class="hint">注意：处理过程可能需要几分钟时间，请耐心等待。您可以在结果页面查看实时处理进度。</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('validationForm');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            form.addEventListener('submit', function(event) {
+                // 检查是否选择了文件
+                const fileInput = document.getElementById('excelFiles');
+                if (fileInput.files.length === 0) {
+                    alert('请至少选择一个Excel文件');
+                    event.preventDefault();
+                    return;
+                }
+                
+                // 禁用提交按钮防止重复提交
+                submitBtn.disabled = true;
+                submitBtn.textContent = '提交中...';
+                
+                // 显示提交成功消息
+                alert('提交验证规则任务成功！正在跳转到结果页面，请稍候...');
+                
+                // 允许表单继续提交
+                return true;
+            });
+        });
+    </script>
+</body>
+</html> 

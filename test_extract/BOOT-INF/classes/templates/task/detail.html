@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>任务详情</title>
+    <th:block th:replace="~{layout/base :: head}"></th:block>
+    <style>
+        .progress-container {
+            margin-top: 1rem;
+        }
+        .progress-text {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .step-info {
+             font-size: 0.9rem;
+             color: #495057;
+             margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <th:block th:replace="~{layout/base :: navbar}"></th:block>
+    
+    <div class="container mt-4">
+        <div class="row mb-4">
+            <div class="col">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/">任务列表</a></li>
+                        <li class="breadcrumb-item active" th:text="${task.taskName}">任务详情</li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Task Basic Info -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h3 th:text="${task.taskName}">任务名称</h3>
+                        <p class="text-muted">
+                            创建时间：<span th:text="${#temporals.format(task.createdTime, 'yyyy-MM-dd HH:mm')}"></span>
+                            <span class="ms-3">ID: <code th:text="${task.id}"></code></span>
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <span class="badge fs-6 me-2" 
+                              th:classappend="${task.status.name() == 'COMPLETED' ? 'bg-success' : (task.status.name() == 'FAILED' ? 'bg-danger' : (task.status.name() == 'PROCESSING' ? 'bg-primary' : 'bg-secondary'))}"
+                              th:text="${task.status.name()}">状态</span>
+                         <!-- Display Last Completed Step -->
+                         <span class="step-info" th:if="${task.lastCompletedStep != null}">
+                             ( <i class="fas fa-step-forward me-1"></i> <span th:text="${task.lastCompletedStep}"></span> )
+                         </span>
+                    </div>
+                </div>
+
+                <!-- 查看结果按钮（仅在任务完成时显示） -->
+                <div th:if="${task.status.name() == 'COMPLETED'}" class="mt-3">
+                    <a th:href="@{/task/{id}/result(id=${task.id})}" class="btn btn-success btn-sm">
+                        <i class="fas fa-chart-bar me-1"></i> 查看分析结果
+                    </a>
+                    <a th:href="@{/task/{id}/export(id=${task.id})}" class="btn btn-primary btn-sm ms-2">
+                        <i class="fas fa-file-download me-1"></i> 导出结果
+                    </a>
+                </div>
+
+                <!-- Progress Bar & Status -->
+                <div th:if="${task.status.name() == 'PROCESSING' or task.status.name() == 'PENDING'}" class="progress-container mt-3">
+                    <div class="progress">
+                        <div th:id="'progress-bar-' + ${task.id}" 
+                             class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                    </div>
+                    <p th:id="'progress-text-' + ${task.id}" class="progress-text mt-2">正在初始化...</p>
+                </div>
+                 <div th:if="${task.status.name() == 'FAILED'}" class="alert alert-danger mt-3" role="alert">
+                     任务执行失败。
+                     <span th:if="${result != null and result.errorMessage != null}" th:text="${result.errorMessage}"></span>
+                     请检查日志或重试。
+                 </div>
+            </div>
+             <!-- Action Buttons -->
+             <div class="card-footer bg-light text-end">
+                 <form th:action="@{/task/{id}/cancel(id=${task.id})}" method="post" style="display: inline-block; margin-right: 5px;" 
+                       th:if="${task.status.name() == 'PROCESSING' or task.status.name() == 'PENDING'}">
+                     <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('确定要中止此任务吗？');">
+                         <i class="fas fa-stop-circle me-1"></i> 中止任务
+                     </button>
+                 </form>
+                 <form th:action="@{/task/{id}/resume(id=${task.id})}" method="post" style="display: inline-block; margin-right: 5px;" 
+                       th:if="${task.status.name() == 'FAILED'}">
+                     <button type="submit" class="btn btn-info btn-sm">
+                         <i class="fas fa-redo me-1"></i> 恢复任务
+                     </button>
+                 </form>
+                 <form th:action="@{/task/{id}/delete(id=${task.id})}" method="post" style="display: inline-block;">
+                     <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('确定要删除此任务及其所有数据吗？');">
+                          <i class="fas fa-trash-alt me-1"></i> 删除任务
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- REMOVED Category Selection Section -->
+        <!-- <div th:if="${task.status.name() == 'WAITING_FOR_SELECTION'}" class="card mb-4"> ... </div> -->
+        
+        <!-- Log Area -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">任务日志</h5>
+            </div>
+            <div class="card-body">
+                <pre id="logArea" style="max-height: 300px; overflow-y: scroll; background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 10px; font-size: 0.85rem;">加载日志中...</pre>
+            </div>
+        </div>
+
+    </div>
+
+    <th:block th:replace="~{layout/base :: scripts}"></th:block>
+    <!-- ECharts for graph -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        const task = /*[[${task}]]*/ {};
+        const result = /*[[${result}]]*/ null; // This might be null initially
+        const progressData = /*[[${progress}]]*/ {}; // Initial progress data
+        let progressIntervalId = null;
+
+        // Function to update progress bar and text
+        function updateProgressDisplay(progressInfo) {
+            if (!progressInfo) {
+                console.warn('No progress info provided to updateProgressDisplay');
+                return;
+            }
+            
+            console.log('Progress info received:', progressInfo); // 添加调试信息
+            
+            const progressBar = document.getElementById('progress-bar-' + task.id);
+            const progressText = document.getElementById('progress-text-' + task.id);
+            const logArea = document.getElementById('logArea');
+
+            if (progressBar && progressText) {
+                 const overallProgress = progressInfo.overallProgress || 0;
+                 const currentStepMessage = progressInfo.currentStepMessage || '等待中...';
+                 const currentStep = progressInfo.currentStep || '未知步骤';
+                 
+                 progressBar.style.width = overallProgress + '%';
+                 progressBar.setAttribute('aria-valuenow', overallProgress);
+                 progressBar.innerText = overallProgress + '%';
+                 progressText.innerText = `[${currentStep}] ${currentStepMessage} (${overallProgress}%)`;
+            }
+            
+            // Update logs
+            if (logArea) {
+                try {
+                    let logContent = '';
+                    // 简化日志处理逻辑，优先使用logs字段
+                    if (progressInfo.logs) {
+                        if (Array.isArray(progressInfo.logs)) {
+                            logContent = progressInfo.logs
+                                .map(log => {
+                                    if (typeof log === 'string') return log;
+                                    if (!log) return ''; // Skip null or undefined log entries
+                                    const timestamp = log.timestamp || '';
+                                    const step = log.step || log.type || '未知步骤';
+                                    const message = log.message || log.content || '';
+                                    const progress = log.progress !== undefined ? `(${log.progress}%)` : '';
+                                    return `${timestamp} [${step}] ${message} ${progress}`;
+                                })
+                                .filter(line => line.trim() !== '') // Remove empty lines
+                                .join('\n');
+                        } else if (typeof progressInfo.logs === 'string') {
+                            logContent = progressInfo.logs;
+                        }
+                    } else if (progressInfo.detailedLogs) {
+                        // 为向后兼容保留detailedLogs处理逻辑
+                        if (Array.isArray(progressInfo.detailedLogs)) {
+                            logContent = progressInfo.detailedLogs
+                                .map(log => {
+                                    if (!log) return ''; // Skip null or undefined log entries
+                                    const timestamp = log.timestamp || '';
+                                    const step = log.step || '未知步骤';
+                                    const message = log.message || '';
+                                    const progress = log.progress !== undefined ? `(${log.progress}%)` : '';
+                                    return `${timestamp} [${step}] ${message} ${progress}`;
+                                })
+                                .filter(line => line.trim() !== '') // Remove empty lines
+                                .join('\n');
+                        } else if (typeof progressInfo.detailedLogs === 'string') {
+                            logContent = progressInfo.detailedLogs;
+                        } else {
+                            // Try to stringify the object
+                            try {
+                                logContent = JSON.stringify(progressInfo.detailedLogs, null, 2);
+                            } catch (e) {
+                                logContent = '日志数据格式无法解析';
+                            }
+                        }
+                    }
+                    
+                    if (logContent.trim() === '') {
+                        // If we still don't have logs but have step info, create a minimal log entry
+                        if (progressInfo.currentStep) {
+                            const timestamp = new Date().toISOString().replace('T', ' ').substr(0, 19);
+                            const step = progressInfo.currentStep;
+                            const message = progressInfo.currentStepMessage || '处理中';
+                            const progress = progressInfo.overallProgress || 0;
+                            logContent = `${timestamp} [${step}] ${message} (${progress}%)`;
+                        } else {
+                            logContent = '暂无日志数据';
+                        }
+                    }
+                    
+                    // Update the log area
+                    logArea.textContent = logContent;
+                    // Scroll to bottom
+                    logArea.scrollTop = logArea.scrollHeight;
+                } catch (e) {
+                    console.error('Error updating logs:', e);
+                    logArea.textContent = '处理日志时发生错误: ' + e.message;
+                }
+            }
+        }
+
+        // Function to fetch and update progress
+        function pollProgress(taskId) {
+            fetch(`/api/task/${taskId}/progress`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch progress: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(progressInfo => {
+                    updateProgressDisplay(progressInfo);
+                    
+                    // Check if task is still processing
+                    // Note: We rely on the server updating the task status eventually.
+                    // The progress endpoint might lag slightly behind actual task completion.
+                    fetch(`/api/task/${taskId}/status`) // Fetch latest task status
+                       .then(res => res.json())
+                       .then(taskStatusInfo => {
+                            if (taskStatusInfo.status !== 'PROCESSING' && taskStatusInfo.status !== 'PENDING') {
+                                console.log(`Task ${taskId} status is ${taskStatusInfo.status}. Stopping polling.`);
+                                clearInterval(progressIntervalId);
+                                progressIntervalId = null;
+                                // Reload page to show final result or error state
+                                 setTimeout(() => location.reload(), 1500); 
+                            }
+                       }).catch(err => {
+                            console.error('Error fetching task status:', err);
+                            // Optionally stop polling on status fetch error
+                       });
+                })
+                .catch(error => {
+                    console.error('Error fetching progress:', error);
+                    const progressText = document.getElementById('progress-text-' + task.id);
+                    if(progressText) progressText.innerText = '获取进度失败.';
+                    // Stop polling on error
+                    if (progressIntervalId) {
+                        clearInterval(progressIntervalId);
+                        progressIntervalId = null;
+                    }
+            });
+        }
+
+        // Load analysis result (if task is completed)
+        function loadAnalysisResult() {
+            if (!result || !result.resultText) {
+                console.error('Result or resultText is missing.');
+                return;
+            }
+            try {
+                console.log('Processing result text:', result.resultText); // Debug log
+                
+                // 直接使用文本内容，不尝试解析JSON
+                let resultData = {
+                    report: result.resultText,
+                    compiledRules: '',
+                    fieldRules: []
+                };
+                
+                // 显示分析报告
+                const reportElement = document.getElementById('analysisReport');
+                if (reportElement) {
+                    reportElement.innerHTML = marked.parse(result.resultText);
+                }
+
+                // 显示统计信息
+                const fieldCountElement = document.getElementById('fieldCount');
+                if (fieldCountElement && result.fieldCount) {
+                    fieldCountElement.textContent = result.fieldCount;
+                }
+
+            } catch (e) {
+                console.error('Error processing result:', e);
+                alert('加载分析结果失败：处理结果数据时出错。详情请查看控制台。');
+            }
+        }
+
+        // Load field table
+        function loadFieldTable(fields) {
+            const tbody = document.getElementById('fieldTable');
+             tbody.innerHTML = ''; // Clear existing rows
+             if (!fields || fields.length === 0) {
+                 tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">未找到字段信息。</td></tr>';
+                 return;
+             }
+            fields.forEach(field => {
+                const tr = document.createElement('tr');
+                 // Assuming field structure might be {fieldName: '...', description: '...'} within the report
+                 const fieldName = field.fieldName || field.name || '未知字段';
+                 const description = field.description || '';
+                 // const category = field.category || 'N/A'; // Category removed
+                tr.innerHTML = `
+                     <td>${escapeHtml(fieldName)}</td>
+                     <td>${escapeHtml(description)}</td>
+                     <!-- <td><span class="badge bg-info">${escapeHtml(category)}</span></td> -->
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Load relationship graph
+        function loadRelationshipGraph(relations) {
+            const graphChart = echarts.init(document.getElementById('relationshipGraph'));
+            const nodes = new Map();
+            const edges = [];
+
+            relations.forEach(rel => {
+                const sourceName = rel.sourceField?.fieldName || rel.source || '未知源';
+                const targetName = rel.targetField?.fieldName || rel.target || '未知目标';
+                const relationType = rel.relationType || rel.type || '未知类型';
+                const confidence = rel.confidence !== undefined ? rel.confidence.toFixed(2) : 'N/A';
+
+                if (!nodes.has(sourceName)) nodes.set(sourceName, { name: sourceName, value: 1, category: 0 });
+                else nodes.get(sourceName).value++;
+                if (!nodes.has(targetName)) nodes.set(targetName, { name: targetName, value: 1, category: 0 });
+                else nodes.get(targetName).value++;
+
+                edges.push({
+                    source: sourceName,
+                    target: targetName,
+                    value: confidence,
+                    label: {
+                        show: true,
+                        formatter: `${relationType}\n(${confidence})` // Show type and confidence
+                    },
+                    lineStyle: {
+                        opacity: 0.9,
+                        width: 2,
+                        curveness: 0.1
+                    }
+                });
+            });
+
+            const graphOption = {
+                tooltip: {
+                    formatter: function (params) {
+                        if (params.dataType === 'edge') {
+                            return `${params.data.source} -> ${params.data.target}<br/>Type: ${params.data.label.formatter.split('\n')[0]}<br/>Confidence: ${params.data.value}`;
+                        }
+                        return params.name;
+                    }
+                },
+                legend: [{ data: ['字段'] }], // Simplified legend
+                series: [{
+                    type: 'graph',
+                    layout: 'force',
+                    data: Array.from(nodes.values()),
+                    edges: edges,
+                    categories: [{ name: '字段' }],
+                    roam: true,
+                    label: {
+                        show: true,
+                        position: 'right',
+                        formatter: '{b}'
+                    },
+                    force: {
+                        repulsion: 100,
+                        edgeLength: [50, 100]
+                    },
+                    edgeSymbol: ['none', 'arrow'],
+                    edgeSymbolSize: [4, 10]
+                }]
+            };
+            graphChart.setOption(graphOption);
+        }
+
+        // Load rules accordion
+        function loadRules(rules) {
+            const accordion = document.getElementById('ruleAccordion');
+            accordion.innerHTML = ''; // Clear existing items
+            if (!rules || rules.length === 0) {
+                accordion.innerHTML = '<p class="text-center text-muted">未提取到规则。</p>';
+                return;
+            }
+
+            // Group rules by field names
+            const rulesByField = rules.reduce((acc, rule) => {
+                let fieldNames;
+                try {
+                    fieldNames = JSON.parse(rule.fieldNames || '[]');
+                } catch (e) {
+                    console.warn('Failed to parse field names:', rule.fieldNames);
+                    fieldNames = [rule.fieldNames || '未指定字段'];
+                }
+                
+                const fieldNameStr = Array.isArray(fieldNames) ? fieldNames.join(', ') : fieldNames;
+                if (!acc[fieldNameStr]) {
+                    acc[fieldNameStr] = [];
+                }
+                acc[fieldNameStr].push(rule);
+                return acc;
+            }, {});
+
+            Object.keys(rulesByField).sort().forEach((fieldName, index) => {
+                const fieldRules = rulesByField[fieldName];
+                const accordionItemId = `rule-item-${index}`;
+                const collapseId = `collapse-${index}`;
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'accordion-item';
+                itemDiv.innerHTML = `
+                    <h2 class="accordion-header" id="heading-${index}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
+                            字段: ${escapeHtml(fieldName)} (${fieldRules.length}条规则)
+                        </button>
+                    </h2>
+                    <div id="${collapseId}" class="accordion-collapse collapse" 
+                         aria-labelledby="heading-${index}" data-bs-parent="#ruleAccordion">
+                        <div class="accordion-body">
+                            <ul class="list-group list-group-flush">
+                                ${fieldRules.map(rule => `
+                                    <li class="list-group-item">
+                                        <strong>[${escapeHtml(rule.ruleType || rule.type || '未知类型')}]</strong> 
+                                        ${escapeHtml(rule.ruleContent || rule.content || '')}
+                                        <span class="badge bg-light text-dark float-end">置信度: ${rule.confidence !== undefined ? rule.confidence.toFixed(2) : 'N/A'}</span>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+                accordion.appendChild(itemDiv);
+            });
+        }
+
+        // Utility to escape HTML
+        function escapeHtml(unsafe) {
+            if (typeof unsafe !== 'string') return unsafe; // Handle non-strings gracefully
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Initial setup
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Task Status:", task.status);
+            console.log("Result data:", result); // 输出调试信息
+            console.log("Progress data:", progressData); // 添加进度数据调试信息
+            updateProgressDisplay(progressData); // Update with initial progress data
+
+            // 任务日志初始化
+            const logArea = document.getElementById('logArea');
+            if (logArea) {
+                if (progressData && progressData.logs) {
+                    if (Array.isArray(progressData.logs)) {
+                        const logContent = progressData.logs
+                            .map(log => {
+                                const timestamp = log.timestamp || '';
+                                const step = log.step || '未知步骤';
+                                const message = log.message || '';
+                                const progress = log.progress !== undefined ? `(${log.progress}%)` : '';
+                                return `${timestamp} [${step}] ${message} ${progress}`;
+                            })
+                            .join('\n');
+                        logArea.textContent = logContent || '暂无日志。';
+                    } else if (typeof progressData.logs === 'string') {
+                        logArea.textContent = progressData.logs || '暂无日志。';
+                    }
+                } else {
+                    logArea.textContent = '暂无日志或正在加载中...';
+                }
+            }
+
+            if (task.status === 'PROCESSING' || task.status === 'PENDING') {
+                // Start polling if the task is processing or pending (might start processing soon)
+                if (!progressIntervalId) {
+                    console.log(`Starting progress polling for task ${task.id}`);
+                    progressIntervalId = setInterval(() => pollProgress(task.id), 3000); // Poll every 3 seconds
+                    // Poll immediately once
+                    pollProgress(task.id);
+                }
+            } else if (task.status === 'COMPLETED') {
+                if (result) {
+                    console.log("Task completed, loading results.");
+                    loadAnalysisResult();
+                } else {
+                    console.error("Task completed but no result data found.");
+                    alert("任务已完成，但无法加载结果数据。");
+                }
+            } else if (task.status === 'FAILED') {
+                console.log("Task failed.");
+                // Display error message from result if available
+                if (result && result.errorMessage) {
+                    const failAlert = document.querySelector('.alert-danger');
+                    if (failAlert) {
+                        failAlert.innerHTML = `任务执行失败: ${escapeHtml(result.errorMessage)}`;
+                    }
+                }
+            }
+        });
+        /*]]>*/
+    </script>
+</body>
+</html>

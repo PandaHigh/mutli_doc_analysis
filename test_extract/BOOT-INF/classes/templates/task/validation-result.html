@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>规则验证结果</title>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .task-info {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .task-info p {
+            margin: 5px 0;
+        }
+        .task-info strong {
+            color: #2c3e50;
+        }
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .error-message {
+            color: #dc3545;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #dc3545;
+            border-radius: 4px;
+        }
+        .success-message {
+            color: #28a745;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #28a745;
+            border-radius: 4px;
+        }
+        .progress-container {
+            margin-top: 20px;
+            padding: 15px 20px;
+            background-color: #e9f7ef;
+            border-radius: 5px;
+        }
+        .progress-bar {
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+            margin-bottom: 15px;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #4caf50;
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+        .progress-info {
+            font-size: 0.9em;
+            color: #2c3e50;
+            margin-top: 5px;
+            text-align: center;
+            font-weight: 500;
+        }
+        .rule-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+            transition: all 0.3s ease;
+        }
+        .rule-item:hover {
+            box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .rule-item.valid {
+            border-left-color: #2ecc71;
+        }
+        .rule-item.invalid {
+            border-left-color: #e74c3c;
+        }
+        .rule-item.new {
+            border-left-color: #9b59b6;
+        }
+        .rule-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .rule-type {
+            font-weight: bold;
+            color: #333;
+        }
+        .rule-content {
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+        .confidence {
+            color: #666;
+            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+        }
+        .confidence-bar {
+            display: inline-block;
+            height: 6px;
+            width: 100px;
+            background-color: #e0e0e0;
+            margin-left: 8px;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .confidence-fill {
+            height: 100%;
+            background-color: #4caf50;
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 7px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+        .badge-valid {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .badge-invalid {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .badge-new {
+            background-color: #f3e5f5;
+            color: #6a1b9a;
+        }
+        .badge-explicit {
+            background-color: #e3f2fd;
+            color: #0d47a1;
+        }
+        .badge-implicit {
+            background-color: #fff8e1;
+            color: #ff8f00;
+        }
+        .field-tag {
+            background-color: #e1f5fe;
+            color: #0277bd;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            display: inline-block;
+        }
+        .result-summary {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #eff8ff;
+            border-radius: 5px;
+            line-height: 1.6;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .tab:hover {
+            background-color: #f5f5f5;
+        }
+        .tab.active {
+            border-bottom-color: #007bff;
+            color: #007bff;
+            font-weight: bold;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 123, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #007bff;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* 筛选按钮样式 */
+        .filter-buttons {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .filter-btn {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background-color: #f8f9fa;
+            color: #555;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .filter-btn:hover {
+            background-color: #e9ecef;
+        }
+        .filter-btn.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .rule-count {
+            margin-left: auto;
+            padding: 4px 12px;
+            background-color: #f1f1f1;
+            border-radius: 12px;
+            font-size: 0.9em;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>规则验证结果: <span th:text="${task.taskName}"></span></h1>
+        
+        <!-- 任务基本信息 -->
+        <div class="task-info">
+            <p><strong>任务ID：</strong><span th:text="${task.id}"></span></p>
+            <p><strong>创建时间：</strong><span th:text="${#temporals.format(task.createdTime, 'yyyy-MM-dd HH:mm:ss')}"></span></p>
+            <p><strong>完成时间：</strong><span th:text="${task.completedTime != null ? #temporals.format(task.completedTime, 'yyyy-MM-dd HH:mm:ss') : '未完成'}"></span></p>
+            <p><strong>状态：</strong><span th:text="${task.status}"></span></p>
+        </div>
+        
+        <div th:if="${error}" class="error-message" th:text="${error}"></div>
+        <div th:if="${message}" class="success-message" th:text="${message}"></div>
+        
+        <!-- 进度显示区域 -->
+        <div id="progressSection" class="section progress-container">
+            <h2>处理进度</h2>
+            <div class="progress-bar">
+                <div id="progressBar" class="progress-fill" style="width: 0%;"></div>
+            </div>
+            <div id="progressInfo" class="progress-info">准备中...</div>
+        </div>
+        
+        <!-- 验证结果区域 -->
+        <div id="resultsSection" class="section" style="display: none;">
+            <h2>验证结果</h2>
+            
+            <div class="tabs">
+                <div class="tab active" data-tab="validatedRules">已验证规则</div>
+                <div class="tab" data-tab="newRules">新发现规则</div>
+                <div class="tab" data-tab="summary">总结</div>
+            </div>
+            
+            <!-- 已验证规则 -->
+            <div id="validatedRules" class="tab-content active">
+                <div class="filter-buttons">
+                    <button class="filter-btn active" data-filter="all">全部规则</button>
+                    <button class="filter-btn" data-filter="valid">有效规则</button>
+                    <button class="filter-btn" data-filter="invalid">无效规则</button>
+                    <span class="rule-count" id="ruleCount"></span>
+                </div>
+                <div id="validatedRulesContainer"></div>
+            </div>
+            
+            <!-- 新发现规则 -->
+            <div id="newRules" class="tab-content">
+                <div id="newRulesContainer"></div>
+            </div>
+            
+            <!-- 验证总结 -->
+            <div id="summary" class="tab-content">
+                <div id="summaryContainer" class="result-summary"></div>
+            </div>
+        </div>
+        
+        <!-- 操作按钮 -->
+        <div class="section">
+            <a th:href="@{/task/{taskId}/result(taskId=${task.id})}" class="btn">返回结果页面</a>
+            <a th:href="@{/task/{taskId}/validation-history(taskId=${task.id})}" class="btn">查看历史记录</a>
+        </div>
+    </div>
+
+    <!-- 添加隐藏的任务ID字段 -->
+    <input type="hidden" id="taskIdInput" th:value="${task.id}">
+
+    <!-- 引入WebSocket和STOMP客户端库 -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stomp-websocket@2.3.4-next/lib/stomp.min.js"></script>
+    
+    <script>
+        // 从隐藏字段获取任务ID
+        const taskId = document.getElementById('taskIdInput').value;
+        let stompClient = null;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化WebSocket连接
+            initWebSocket();
+            
+            // 初始化标签页
+            initTabs();
+            
+            // 定时检查验证状态
+            checkValidationStatus();
+            setInterval(checkValidationStatus, 2000);
+        });
+        
+        function initWebSocket() {
+            const socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+            stompClient.debug = null; // 禁用调试输出
+            
+            stompClient.connect({}, function(frame) {
+                console.log('WebSocket连接成功');
+                
+                // 订阅验证进度话题
+                stompClient.subscribe('/topic/validation/' + taskId, function(message) {
+                    const progressData = JSON.parse(message.body);
+                    updateProgress(progressData);
+                });
+            }, function(error) {
+                console.error('WebSocket连接失败:', error);
+                addLogEntry('WebSocket连接失败，无法接收实时更新');
+            });
+        }
+        
+        function initTabs() {
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // 移除所有活动标签样式
+                    tabs.forEach(t => t.classList.remove('active'));
+                    // 添加当前活动标签样式
+                    this.classList.add('active');
+                    
+                    // 隐藏所有内容
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.remove('active');
+                    });
+                    
+                    // 显示当前内容
+                    const tabId = this.getAttribute('data-tab');
+                    document.getElementById(tabId).classList.add('active');
+                });
+            });
+            
+            // 初始化规则筛选按钮
+            initFilterButtons();
+        }
+        
+        function initFilterButtons() {
+            const filterButtons = document.querySelectorAll('.filter-btn');
+            filterButtons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // 移除所有活动按钮样式
+                    filterButtons.forEach(b => b.classList.remove('active'));
+                    // 添加当前活动按钮样式
+                    this.classList.add('active');
+                    
+                    // 应用筛选
+                    const filterType = this.getAttribute('data-filter');
+                    filterValidatedRules(filterType);
+                });
+            });
+        }
+        
+        function filterValidatedRules(filterType) {
+            const ruleItems = document.querySelectorAll('#validatedRulesContainer .rule-item');
+            let visibleCount = 0;
+            
+            ruleItems.forEach(item => {
+                if (filterType === 'all') {
+                    item.style.display = 'block';
+                    visibleCount++;
+                } else if (filterType === 'valid' && item.classList.contains('valid')) {
+                    item.style.display = 'block';
+                    visibleCount++;
+                } else if (filterType === 'invalid' && item.classList.contains('invalid')) {
+                    item.style.display = 'block';
+                    visibleCount++;
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+            
+            // 更新规则计数
+            updateRuleCount(visibleCount, ruleItems.length);
+        }
+        
+        function updateRuleCount(visibleCount, totalCount) {
+            const ruleCountElement = document.getElementById('ruleCount');
+            ruleCountElement.textContent = `显示 ${visibleCount}/${totalCount} 条规则`;
+        }
+        
+        function checkValidationStatus() {
+            fetch('/api/task/' + taskId + '/validation-status')
+                .then(response => response.json())
+                .then(data => {
+                    // 更新进度
+                    if (data.progress !== undefined) {
+                        document.getElementById('progressBar').style.width = data.progress + '%';
+                    }
+                    
+                    // 如果验证已完成，显示结果
+                    if (data.status === 'COMPLETED') {
+                        document.getElementById('progressInfo').textContent = '验证已完成';
+                        document.getElementById('resultsSection').style.display = 'block';
+                        renderValidationResults(JSON.parse(data.validatedRules));
+                    } else if (data.status === 'FAILED') {
+                        document.getElementById('progressInfo').textContent = '验证失败: ' + data.error;
+                    } else if (data.status === 'PROCESSING') {
+                        document.getElementById('progressInfo').textContent = '正在处理 (' + data.progress + '%)';
+                    }
+                })
+                .catch(error => {
+                    console.error('获取验证状态失败:', error);
+                });
+        }
+        
+        function updateProgress(progressData) {
+            // 更新进度条
+            if (progressData.progress >= 0) {
+                document.getElementById('progressBar').style.width = progressData.progress + '%';
+            }
+            
+            // 更新进度信息
+            document.getElementById('progressInfo').textContent = progressData.message + 
+                (progressData.progress >= 0 ? ' (' + progressData.progress + '%)' : '');
+            
+            // 添加日志条目
+            addLogEntry(progressData.message);
+        }
+        
+        function addLogEntry(message) {
+            // 已移除日志显示，但保留函数以避免错误
+            console.log('处理日志: ' + message);
+        }
+        
+        function renderValidationResults(results) {
+            if (!results) return;
+            
+            // 渲染已验证规则
+            const validatedRulesContainer = document.getElementById('validatedRulesContainer');
+            validatedRulesContainer.innerHTML = '';
+            
+            if (results.validatedRules && results.validatedRules.length > 0) {
+                // 统计有效和无效规则数量
+                let validCount = 0;
+                let invalidCount = 0;
+                
+                results.validatedRules.forEach(rule => {
+                    if (rule.isValid) {
+                        validCount++;
+                    } else {
+                        invalidCount++;
+                    }
+                    
+                    const ruleElement = document.createElement('div');
+                    ruleElement.className = 'rule-item ' + (rule.isValid ? 'valid' : 'invalid');
+                    ruleElement.setAttribute('data-valid', rule.isValid);
+                    
+                    const headerDiv = document.createElement('div');
+                    headerDiv.className = 'rule-header';
+                    
+                    const typeDiv = document.createElement('div');
+                    typeDiv.className = 'rule-type';
+                    typeDiv.innerHTML = '规则 <span class="badge ' + 
+                        (rule.isValid ? 'badge-valid">有效' : 'badge-invalid">无效') + '</span>';
+                    
+                    headerDiv.appendChild(typeDiv);
+                    ruleElement.appendChild(headerDiv);
+                    
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'rule-content';
+                    contentDiv.innerHTML = '<strong>规则内容:</strong> ' + rule.ruleContent;
+                    
+                    if (!rule.isValid && rule.reason) {
+                        contentDiv.innerHTML += '<br><strong>无效原因:</strong> ' + rule.reason;
+                    }
+                    
+                    ruleElement.appendChild(contentDiv);
+                    validatedRulesContainer.appendChild(ruleElement);
+                });
+                
+                // 更新筛选按钮文本，添加计数
+                const filterButtons = document.querySelectorAll('.filter-btn');
+                filterButtons.forEach(btn => {
+                    const filterType = btn.getAttribute('data-filter');
+                    if (filterType === 'all') {
+                        btn.textContent = `全部规则 (${results.validatedRules.length})`;
+                    } else if (filterType === 'valid') {
+                        btn.textContent = `有效规则 (${validCount})`;
+                    } else if (filterType === 'invalid') {
+                        btn.textContent = `无效规则 (${invalidCount})`;
+                    }
+                });
+                
+                // 初始化筛选按钮
+                initFilterButtons();
+                
+                // 初始化计数 - 默认显示全部
+                updateRuleCount(results.validatedRules.length, results.validatedRules.length);
+            } else {
+                validatedRulesContainer.innerHTML = '<p>没有找到已验证的规则</p>';
+                updateRuleCount(0, 0);
+            }
+            
+            // 渲染新规则
+            const newRulesContainer = document.getElementById('newRulesContainer');
+            newRulesContainer.innerHTML = '';
+            
+            if (results.newRules && results.newRules.length > 0) {
+                results.newRules.forEach(rule => {
+                    const ruleElement = document.createElement('div');
+                    ruleElement.className = 'rule-item new';
+                    
+                    const headerDiv = document.createElement('div');
+                    headerDiv.className = 'rule-header';
+                    
+                    const typeDiv = document.createElement('div');
+                    typeDiv.className = 'rule-type';
+                    typeDiv.innerHTML = '规则 <span class="badge badge-new">新</span> ' +
+                        '<span class="badge ' + 
+                        (rule.ruleType === 'EXPLICIT' ? 'badge-explicit">显式' : 'badge-implicit">隐含') + 
+                        '</span>';
+                    
+                    const confidenceDiv = document.createElement('div');
+                    confidenceDiv.className = 'confidence';
+                    confidenceDiv.innerHTML = 
+                        '<span>置信度: </span>' +
+                        '<strong>' + rule.confidence.toFixed(2) + '</strong>' +
+                        '<div class="confidence-bar">' +
+                        '<div class="confidence-fill" style="width:' + (rule.confidence * 100) + '%;"></div>' +
+                        '</div>';
+                    
+                    headerDiv.appendChild(typeDiv);
+                    headerDiv.appendChild(confidenceDiv);
+                    ruleElement.appendChild(headerDiv);
+                    
+                    // 相关字段
+                    if (rule.fields && rule.fields.length > 0) {
+                        const fieldsDiv = document.createElement('div');
+                        fieldsDiv.style.marginTop = '10px';
+                        fieldsDiv.innerHTML = '<strong>相关字段:</strong> ';
+                        
+                        rule.fields.forEach(field => {
+                            const fieldTag = document.createElement('span');
+                            fieldTag.className = 'field-tag';
+                            fieldTag.textContent = field;
+                            fieldsDiv.appendChild(fieldTag);
+                        });
+                        
+                        ruleElement.appendChild(fieldsDiv);
+                    }
+                    
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'rule-content';
+                    contentDiv.innerHTML = '<strong>规则内容:</strong> ' + rule.ruleContent;
+                    
+                    ruleElement.appendChild(contentDiv);
+                    newRulesContainer.appendChild(ruleElement);
+                });
+            } else {
+                newRulesContainer.innerHTML = '<p>没有发现新规则</p>';
+            }
+            
+            // 渲染总结
+            const summaryContainer = document.getElementById('summaryContainer');
+            if (results.summary) {
+                summaryContainer.textContent = results.summary;
+            } else {
+                summaryContainer.textContent = '未提供总结信息';
+            }
+        }
+    </script>
+</body>
+</html> 

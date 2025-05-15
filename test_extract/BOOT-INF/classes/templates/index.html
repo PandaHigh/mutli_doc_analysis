@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{layout/base :: layout(~{::content})}">
+<head>
+    <title>多文档分析系统</title>
+</head>
+<body>
+    <div th:fragment="content">
+        <div class="container mt-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>分析任务列表</h1>
+                <a href="/task/new" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> 创建新任务
+                </a>
+            </div>
+
+            <div class="row">
+                <div th:each="task : ${tasks}" class="col-md-6 mb-4">
+                    <div class="card task-card">
+                        <div class="card-body">
+                            <h5 class="card-title" th:text="${task.taskName}">任务名称</h5>
+                            <p class="card-text">
+                                <small class="text-muted" th:text="${#temporals.format(task.createdTime, 'yyyy-MM-dd HH:mm:ss')}">创建时间</small>
+                            </p>
+                            <div class="progress mb-3">
+                                <div class="progress-bar" role="progressbar" 
+                                     th:id="'progress-bar-' + ${task.id}"
+                                     th:style="'width: ' + ${task.status == 'COMPLETED' ? '100' : (task.status == 'PROCESSING' ? '50' : '0')} + '%;'"
+                                     th:text="${task.status == 'COMPLETED' ? '已完成' : (task.status == 'PROCESSING' ? '处理中' : '等待中')}">
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <a th:href="@{/task/{id}(id=${task.id})}" class="btn btn-sm btn-outline-primary">
+                                    查看详情
+                                </a>
+                                <form th:action="@{/task/{id}/delete(id=${task.id})}" method="post" style="display: inline;">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                            onclick="return confirm('确定要删除此任务及其所有数据吗？');">
+                                        删除
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script th:inline="javascript">
+        // 自动更新进度
+        function updateProgress(taskId, progressInfo) {
+            const progressBar = document.getElementById('progress-bar-' + taskId);
+            if (progressBar) {
+                const progress = progressInfo.overallProgress || 0;
+                progressBar.style.width = progress + '%';
+                progressBar.setAttribute('aria-valuenow', progress);
+                progressBar.textContent = progress + '%';
+                
+                // 根据进度更新状态文本
+                if (progress === 100) {
+                    progressBar.textContent = '已完成';
+                } else if (progress > 0) {
+                    progressBar.textContent = '处理中 (' + progress + '%)';
+                } else {
+                    progressBar.textContent = '等待中';
+                }
+            }
+        }
+
+        // 页面加载完成后开始更新进度
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取所有任务ID
+            const taskIds = Array.from(document.querySelectorAll('.card.task-card'))
+                .map(card => card.querySelector('.progress-bar').id.replace('progress-bar-', ''));
+            
+            // 为每个任务启动进度更新
+            taskIds.forEach(taskId => {
+                // 立即获取一次进度
+                fetch('/api/analysis/progress/' + taskId)
+                    .then(response => response.json())
+                    .then(data => {
+                        updateProgress(taskId, data);
+                    });
+                
+                // 然后每5秒更新一次
+                setInterval(() => {
+                    fetch('/api/analysis/progress/' + taskId)
+                        .then(response => response.json())
+                        .then(data => {
+                            updateProgress(taskId, data);
+                        });
+                }, 5000);
+            });
+        });
+    </script>
+</body>
+</html> 

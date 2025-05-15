@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{layout/base :: layout(~{::content})}">
+<head>
+    <title>任务进度</title>
+    <style>
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+        }
+        
+        .step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+            padding: 0 1rem;
+        }
+        
+        .step:not(:last-child):after {
+            content: '';
+            position: absolute;
+            top: 1.5rem;
+            right: -50%;
+            width: 100%;
+            height: 2px;
+            background-color: #e9ecef;
+            z-index: 1;
+        }
+        
+        .step.completed:after {
+            background-color: #28a745;
+        }
+        
+        .step-number {
+            width: 3rem;
+            height: 3rem;
+            line-height: 3rem;
+            border-radius: 50%;
+            background-color: #e9ecef;
+            margin: 0 auto 1rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .step.completed .step-number {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .step.active .step-number {
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .step-title {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .step-description {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        
+        .log-container {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 1rem;
+        }
+        
+        .log-entry {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-time {
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+        
+        .log-step {
+            font-weight: bold;
+            color: #007bff;
+            margin: 0.25rem 0;
+        }
+        
+        .log-message {
+            margin: 0.25rem 0;
+        }
+        
+        .log-progress {
+            font-size: 0.875rem;
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div th:fragment="content">
+        <div class="container mt-4">
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0" th:text="${'任务: ' + task.taskName}">任务名称</h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- 进度条 -->
+                            <div class="progress mb-4">
+                                <div class="progress-bar" role="progressbar" 
+                                     th:style="'width: ' + ${task.progress} + '%;'"
+                                     th:text="${task.progress + '%'}"
+                                     aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                </div>
+                            </div>
+
+                            <!-- 分析步骤 -->
+                            <div class="progress-steps mb-4">
+                                <div class="step" th:classappend="${task.status == 'COMPLETED' ? 'completed' : ''}">
+                                    <div class="step-number">1</div>
+                                    <div class="step-title">Excel文档处理</div>
+                                    <div class="step-description">处理Excel文档并提取字段</div>
+                                </div>
+                                <div class="step" th:classappend="${task.status == 'PROCESSING' or task.status == 'COMPLETED' ? 'completed' : ''}">
+                                    <div class="step-number">2</div>
+                                    <div class="step-title">字段分类</div>
+                                    <div class="step-description">对提取的字段进行分类</div>
+                                </div>
+                                <div class="step" th:classappend="${task.status == 'PROCESSING' or task.status == 'COMPLETED' ? 'completed' : ''}">
+                                    <div class="step-number">3</div>
+                                    <div class="step-title">Word文档处理</div>
+                                    <div class="step-description">处理Word文档内容</div>
+                                </div>
+                                <div class="step" th:classappend="${task.status == 'PROCESSING' or task.status == 'COMPLETED' ? 'completed' : ''}">
+                                    <div class="step-number">4</div>
+                                    <div class="step-title">分类分析</div>
+                                    <div class="step-description">分析文档内容与字段的关系</div>
+                                </div>
+                                <div class="step" th:classappend="${task.status == 'PROCESSING' or task.status == 'COMPLETED' ? 'completed' : ''}">
+                                    <div class="step-number">5</div>
+                                    <div class="step-title">规则提取</div>
+                                    <div class="step-description">提取字段规则</div>
+                                </div>
+                                <div class="step" th:classappend="${task.status == 'COMPLETED' ? 'completed' : ''}">
+                                    <div class="step-number">6</div>
+                                    <div class="step-title">结果生成</div>
+                                    <div class="step-description">生成最终分析结果</div>
+                                </div>
+                            </div>
+
+                            <!-- 日志展示区域 -->
+                            <div class="log-container">
+                                <h6 class="mb-3">分析日志</h6>
+                                <div id="logEntries" class="log-entries">
+                                    <!-- 日志条目将通过JavaScript动态添加 -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script th:inline="javascript">
+        // 获取任务ID
+        const taskId = /*[[${task.id}]]*/ '0';
+        
+        // 更新进度和日志
+        function updateProgress() {
+            fetch('/api/task/' + taskId + '/progress')
+                .then(response => response.json())
+                .then(data => {
+                    // 更新进度条
+                    const progressBar = document.querySelector('.progress-bar');
+                    progressBar.style.width = data.overallProgress + '%';
+                    progressBar.setAttribute('aria-valuenow', data.overallProgress);
+                    progressBar.textContent = data.overallProgress + '%';
+
+                    // 更新当前步骤
+                    const steps = document.querySelectorAll('.step');
+                    steps.forEach(step => {
+                        const stepNumber = parseInt(step.querySelector('.step-number').textContent);
+                        const currentStep = getStepNumber(data.currentStep);
+                        
+                        if (stepNumber < currentStep) {
+                            step.classList.add('completed');
+                        } else if (stepNumber === currentStep) {
+                            step.classList.add('active');
+                            step.classList.remove('completed');
+                        } else {
+                            step.classList.remove('active', 'completed');
+                        }
+                    });
+
+                    // 更新日志
+                    const logEntries = document.getElementById('logEntries');
+                    // 清空现有日志
+                    logEntries.innerHTML = '';
+                    
+                    // 添加新日志
+                    data.logs.forEach(log => {
+                        const logEntry = document.createElement('div');
+                        logEntry.className = 'log-entry';
+                        
+                        // 格式化时间戳
+                        const timestamp = new Date(log.timestamp);
+                        const formattedTime = timestamp.toLocaleString('zh-CN', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                        });
+                        
+                        logEntry.innerHTML = `
+                            <div class="log-time">${formattedTime}</div>
+                            <div class="log-step">${getStepName(log.step)}</div>
+                            <div class="log-message">${log.message}</div>
+                            <div class="log-progress">进度: ${log.progress}%</div>
+                        `;
+                        logEntries.appendChild(logEntry);
+                    });
+
+                    // 自动滚动到底部
+                    logEntries.scrollTop = logEntries.scrollHeight;
+
+                    // 如果任务未完成，继续更新
+                    if (data.status !== 'COMPLETED') {
+                        setTimeout(updateProgress, 2000);
+                    } else {
+                        // 任务完成，跳转到结果页面
+                        window.location.href = '/task/result/' + taskId;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    setTimeout(updateProgress, 5000); // 出错后5秒重试
+                });
+        }
+
+        // 获取步骤编号
+        function getStepNumber(stepName) {
+            const stepMap = {
+                'excel_processing': 1,
+                'field_classification': 2,
+                'word_processing': 3,
+                'category_analysis': 4,
+                'rule_extraction': 5,
+                'result_generation': 6
+            };
+            return stepMap[stepName] || 0;
+        }
+
+        // 获取步骤名称
+        function getStepName(stepName) {
+            const stepMap = {
+                'excel_processing': 'Excel文档处理',
+                'field_classification': '字段分类',
+                'word_processing': 'Word文档处理',
+                'category_analysis': '分类分析',
+                'rule_extraction': '规则提取',
+                'result_generation': '结果生成'
+            };
+            return stepMap[stepName] || stepName;
+        }
+
+        // 页面加载完成后开始更新
+        document.addEventListener('DOMContentLoaded', function() {
+            updateProgress();
+        });
+    </script>
+</body>
+</html> 

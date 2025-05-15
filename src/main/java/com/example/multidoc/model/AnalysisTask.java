@@ -35,11 +35,11 @@ public class AnalysisTask {
     @Column(name = "chunk_size")
     private Integer chunkSize = 5000;
     
-    @Column(name = "word_file_paths", columnDefinition = "json")
+    @Column(name = "word_file_paths", columnDefinition = "TEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> wordFilePaths;
     
-    @Column(name = "excel_file_paths", columnDefinition = "json")
+    @Column(name = "excel_file_paths", columnDefinition = "TEXT")
     @Convert(converter = StringListConverter.class)
     private List<String> excelFilePaths;
     

@@ -51,9 +51,9 @@ public class AnalysisService {
     private static final String STEP_COMPLETE = "complete";
     // --- End New Step Constants ---
 
-    private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final long RETRY_DELAY_MS = 5000; // 增加到5秒
-    private static final long AI_SERVICE_TIMEOUT_SECONDS = 240; // 增加到240秒
+    private static final int MAX_RETRY_ATTEMPTS = 5;
+    private static final long RETRY_DELAY_MS = 10000; // 增加到10秒
+    private static final long AI_SERVICE_TIMEOUT_SECONDS = 360; // 增加到360秒
     private static final int NUM_CATEGORIES = 15; // 字段分类数量
     private static final int TOP_K_SENTENCES = 5; // 每个字段关联的句子数量
 
@@ -94,7 +94,8 @@ public class AnalysisService {
     @Autowired
     private TaskService taskService;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    private ObjectMapper objectMapper;
 
     /**
      * 处理分析任务
@@ -142,8 +143,33 @@ public class AnalysisService {
                 // Call AI service for field categorization
                 if (!allFields.isEmpty()) {
                     taskService.addLog(task, "开始字段分类", "INFO");
+                    
+                    int totalFields = allFields.size();
+                    int batchSize = 100; // 获取fieldBatchSize的值
+                    try {
+                        batchSize = Integer.parseInt(
+                            configRepository.findByConfigKey("app.field-batch-size")
+                            .map(FileStorageConfig::getConfigValue)
+                            .orElse("100")
+                        );
+                    } catch (Exception e) {
+                        logger.warn("读取字段批次配置失败，使用默认值100", e);
+                    }
+                    
+                    int totalBatches = (int) Math.ceil((double) totalFields / batchSize);
+                    taskService.addLog(task, String.format("总共需要处理 %d 个字段，分为 %d 个批次，每批次 %d 个字段", 
+                        totalFields, totalBatches, batchSize), "INFO");
+                    updateTaskProgress(taskId, STEP_EXCEL_AND_FIELD_PROCESSING, 
+                        String.format("开始字段分类 (0/%d 批次)", totalBatches), 20);
+                    
+                    // 调用AI服务进行字段分类，带进度回调
                     JsonNode categoriesNode = callAIServiceWithRetry("Field Categorization", () ->
-                        aiService.categorizeFields(allFields)
+                        aiService.categorizeFields(allFields, (currentBatch, totalBatch) -> {
+                            String message = String.format("正在字段分类 (%d/%d 批次)", currentBatch, totalBatch);
+                            int progress = 20 + (int)(80.0 * currentBatch / totalBatch);
+                            updateTaskProgress(taskId, STEP_EXCEL_AND_FIELD_PROCESSING, message, progress);
+                            taskService.addLog(task, message, "INFO");
+                        })
                     );
 
                     // Process categorization results and save fields
@@ -490,14 +516,6 @@ public class AnalysisService {
                 resultText.append("  相关字段: ").append(rule.getFieldNames()).append("\n\n");
             }
             
-            // 调用AI服务生成分析报告
-            String analysisReport = callAIServiceWithRetry("Analysis Report Generation", () ->
-                aiService.generateAnalysisReport(task.getTaskName(), fields, rules)
-            );
-            
-            // 添加分析报告到结果
-            resultText.append("分析报告:\n").append(analysisReport);
-            
             // 确保结果目录存在
             Path resultDir = Paths.get("uploads/results");
             Files.createDirectories(resultDir);
@@ -514,7 +532,7 @@ public class AnalysisService {
             analysisResult.setCompletedTime(LocalDateTime.now());
             analysisResult.setResultText(resultText.toString());
             analysisResult.setFieldCount(fields.size());
-            analysisResult.setSummaryText(analysisReport);
+            analysisResult.setSummaryText(""); // 不再生成分析报告
             resultRepository.save(analysisResult);
             
         } catch (Exception e) {
@@ -664,23 +682,59 @@ public class AnalysisService {
 
     private <T> T callAIServiceWithRetry(String operationName, Supplier<T> operation) {
         int attempts = 0;
+        long currentDelay = RETRY_DELAY_MS;
+        Exception lastException = null;
+        
         while (attempts < MAX_RETRY_ATTEMPTS) {
             try {
+                logger.info("执行{}操作 (尝试 {}/{})", operationName, attempts + 1, MAX_RETRY_ATTEMPTS);
                 return operation.get();
             } catch (Exception e) {
                 attempts++;
-                if (attempts >= MAX_RETRY_ATTEMPTS) {
-                    throw new RuntimeException(operationName + " failed after " + MAX_RETRY_ATTEMPTS + " attempts", e);
+                lastException = e;
+                
+                // 分析异常类型
+                String errorMessage = e.getMessage();
+                boolean isHTMLorJSONError = errorMessage != null && 
+                    (errorMessage.contains("text/html") || 
+                     errorMessage.contains("JsonParseException") ||
+                     (e.getCause() != null && e.getCause().toString().contains("JsonParseException")));
+                
+                // 根据错误类型调整重试延迟
+                long retryDelay = currentDelay;
+                if (isHTMLorJSONError) {
+                    // HTML或JSON解析错误可能是临时服务问题，使用更长延迟
+                    retryDelay = Math.min(currentDelay * 2, 120000);
+                    logger.warn("{} - 检测到HTML响应或JSON解析错误 (尝试 {}/{})", 
+                        operationName, attempts, MAX_RETRY_ATTEMPTS);
+                } else if (errorMessage != null && 
+                          (errorMessage.contains("429") || errorMessage.contains("too many requests"))) {
+                    // 限流错误，使用更长延迟
+                    retryDelay = Math.min(currentDelay * 3, 180000);
+                    logger.warn("{} - 检测到请求频率限制 (尝试 {}/{})", 
+                        operationName, attempts, MAX_RETRY_ATTEMPTS);
                 }
-                logger.warn(operationName + " attempt " + attempts + " failed, retrying...", e);
+                
+                if (attempts >= MAX_RETRY_ATTEMPTS) {
+                    logger.error("{} - 已达到最大重试次数 ({}次)", operationName, MAX_RETRY_ATTEMPTS, e);
+                    throw new RuntimeException(operationName + " 失败，已达到最大重试次数(" + 
+                        MAX_RETRY_ATTEMPTS + "): " + errorMessage, e);
+                }
+                
+                logger.warn("{} - 尝试 {} 失败: {}, 将在 {} 毫秒后重试...", 
+                    operationName, attempts, errorMessage, retryDelay);
+                
                 try {
-                    Thread.sleep(RETRY_DELAY_MS * attempts); // Exponential backoff
+                    Thread.sleep(retryDelay);
+                    currentDelay = retryDelay; // 更新当前延迟时间
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    throw new RuntimeException(operationName + " interrupted", ie);
+                    throw new RuntimeException(operationName + " 中断", ie);
                 }
             }
         }
-        throw new RuntimeException(operationName + " failed after " + MAX_RETRY_ATTEMPTS + " attempts");
+        
+        // 不应该到达这里，但为了编译通过
+        throw new RuntimeException(operationName + " 失败，已达到最大重试次数");
     }
 } 
