@@ -159,6 +159,44 @@ public class AIService {
                     content = content.substring(content.indexOf("\n") + 1, content.lastIndexOf("```"));
                 }
 
+                // 清理可能导致JSON解析错误的问题
+                if (userPrompt.contains("JSON") && (content.contains("{") && content.contains("}"))) {
+                    try {
+                        // 尝试提取JSON部分
+                        int jsonStart = content.indexOf("{");
+                        int jsonEnd = content.lastIndexOf("}") + 1;
+                        
+                        if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                            // 提取可能的JSON部分
+                            String possibleJson = content.substring(jsonStart, jsonEnd);
+                            
+                            // 尝试验证和清理提取的JSON
+                            try {
+                                // 先尝试直接解析
+                                objectMapper.readTree(possibleJson);
+                                content = possibleJson; // 如果能解析，使用这个提取的JSON
+                            } catch (Exception e) {
+                                // 如果提取的部分不是有效JSON，但包含JSON结构，尝试更深入的清理
+                                logger.warn("提取的内容不是有效JSON，尝试进一步清理");
+                                
+                                // 移除可能的注释或解释文本
+                                possibleJson = possibleJson.replaceAll("(?m)^//.*$", ""); // 移除单行注释
+                                possibleJson = possibleJson.replaceAll("(?s)/\\*.*?\\*/", ""); // 移除多行注释
+                                
+                                // 再次尝试验证
+                                try {
+                                    objectMapper.readTree(possibleJson);
+                                    content = possibleJson;
+                                } catch (Exception e2) {
+                                    // 保持原样，让调用方决定如何处理
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        logger.warn("尝试提取和清理JSON时出错", e);
+                        // 保持原始内容，让调用方决定如何处理
+                    }
+                }
                 
                 logger.debug("AI服务调用成功，返回内容长度: {}", content.length());
                 return content;
@@ -345,7 +383,8 @@ public class AIService {
                 "9. 为每个分类提供简短的描述，说明该分类的用途和特点\n" +
                 "10. 剔除无法用于规则提取的分类，不要返回无法用于规则提取的分类\n" +
                 "11. 如果字段属于多个分类，应该在多个分类中都包含该字段\n"+
-                "12. 不同表的字段可以属于同一个分类\n",
+                "12. 不同表的字段可以属于同一个分类\n" +
+                "13. 必须返回有效的JSON格式",
                 fieldsInfo.toString(), existingCategoriesInfo.toString()
             );
         } else {
@@ -378,25 +417,57 @@ public class AIService {
                 "7. 为每个分类提供简短的描述，说明该分类的用途和特点\n" +
                 "8. 剔除无法用于规则提取的分类，不要返回无法用于规则提取的分类\n" +
                 "9. 如果字段属于多个分类，应该在多个分类中都包含该字段\n"+
-                "10. 不同表的字段可以属于同一个分类\n",
+                "10. 不同表的字段可以属于同一个分类\n" +
+                "11. 必须返回有效的JSON格式",
                 fieldsInfo.toString()
             );
         }
         
-        String response = executePrompt(systemPrompt, userPrompt);
-        
-        try {
-            JsonNode result = objectMapper.readTree(response);
-            // 验证返回的JSON格式是否正确
-            if (!result.has("categories") || !result.get("categories").isArray()) {
-                throw new RuntimeException("AI返回的JSON格式不正确：缺少categories数组");
+        int maxRetries = 3; // 最大重试次数
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                String response = executePrompt(systemPrompt, userPrompt);
+                
+                // 处理可能的 Markdown 格式的 JSON
+                if (response.startsWith("```json")) {
+                    response = response.substring(response.indexOf("{"), response.lastIndexOf("}") + 1);
+                } else if (response.startsWith("```") && response.contains("{")) {
+                    response = response.substring(response.indexOf("{"), response.lastIndexOf("}") + 1);
+                }
+                
+                // 尝试解析JSON
+                JsonNode result = objectMapper.readTree(response);
+                
+                // 验证返回的JSON格式是否正确
+                if (!result.has("categories") || !result.get("categories").isArray()) {
+                    logger.warn("AI返回的JSON格式不正确：缺少categories数组 (尝试 {}/{})", attempt + 1, maxRetries);
+                    if (attempt == maxRetries - 1) {
+                        throw new RuntimeException("AI返回的JSON格式不正确：缺少categories数组");
+                    }
+                    continue;
+                }
+                
+                return result;
+            } catch (Exception e) {
+                if (e instanceof com.fasterxml.jackson.core.JsonParseException 
+                    || (e.getCause() != null && e.getCause() instanceof com.fasterxml.jackson.core.JsonParseException)
+                    || (e.getMessage() != null && e.getMessage().contains("JsonParseException"))) {
+                    
+                    logger.error("解析AI返回的JSON失败 (尝试 {}/{})", attempt + 1, maxRetries, e);
+                    
+                    if (attempt == maxRetries - 1) {
+                        // 如果已经重试了最大次数，尝试创建一个基本的空结果
+                        logger.warn("已达到最大重试次数，创建空的分类结果");
+                        ObjectNode emptyResult = objectMapper.createObjectNode();
+                        emptyResult.set("categories", objectMapper.createArrayNode());
+                        return emptyResult;
+                    }
+                }
             }
-            
-            return result;
-        } catch (Exception e) {
-            logger.error("解析AI返回的JSON失败", e);
-            throw new RuntimeException("字段分类失败：无法解析返回结果", e);
         }
+        
+        // 如果所有重试都失败，抛出异常
+        throw new RuntimeException("字段分类失败：无法解析返回结果，已重试" + maxRetries + "次");
     }
 
     /**

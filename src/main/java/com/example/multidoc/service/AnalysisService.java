@@ -191,8 +191,11 @@ public class AnalysisService {
                                     field.setDescription(fieldNode.has("description") ? 
                                         fieldNode.get("description").asText() : field.getFieldName());
                                     field.setCategory(categoryName);
-                                    
-                                    fieldRepository.save(field);
+                                    try {
+                                        fieldRepository.save(field);
+                                    } catch (Exception e) {
+                                        logger.error(e.getMessage());
+                                    }
                                     logger.debug("Task {} - Saved field '{}' with category '{}'", 
                                         task.getId(), field.getFieldName(), categoryName);
                                 }
@@ -439,8 +442,6 @@ public class AnalysisService {
                 sentencesText.toString()
             );
             
-            // 记录发送给AI的prompt内容
-            taskService.addLog(task, "\n发送给AI的规则提取提示内容：\n" + prompt, "INFO");
             logger.info("Task {} - 发送给AI的规则提取提示内容：\n{}", task.getId(), prompt);
             
             // 调用AI服务提取规则
@@ -695,15 +696,24 @@ public class AnalysisService {
                 
                 // 分析异常类型
                 String errorMessage = e.getMessage();
+                boolean isJsonParseError = 
+                    (e instanceof com.fasterxml.jackson.core.JsonParseException) || 
+                    (e.getCause() instanceof com.fasterxml.jackson.core.JsonParseException) ||
+                    (errorMessage != null && errorMessage.contains("JsonParseException"));
+                
                 boolean isHTMLorJSONError = errorMessage != null && 
-                    (errorMessage.contains("text/html") || 
-                     errorMessage.contains("JsonParseException") ||
-                     (e.getCause() != null && e.getCause().toString().contains("JsonParseException")));
+                    (errorMessage.contains("text/html") || isJsonParseError);
                 
                 // 根据错误类型调整重试延迟
                 long retryDelay = currentDelay;
-                if (isHTMLorJSONError) {
-                    // HTML或JSON解析错误可能是临时服务问题，使用更长延迟
+                if (isJsonParseError) {
+                    // 特别处理JSON解析错误，这通常是由AI返回的格式问题引起的
+                    // 可能需要快速重试
+                    retryDelay = Math.min(currentDelay, 5000); // 使用较短的延迟，因为这很可能是内容问题而不是服务问题
+                    logger.warn("{} - 检测到JSON解析错误，可能是AI返回的格式问题 (尝试 {}/{})", 
+                        operationName, attempts, MAX_RETRY_ATTEMPTS);
+                } else if (isHTMLorJSONError) {
+                    // HTML响应或JSON解析错误可能是临时服务问题，使用更长延迟
                     retryDelay = Math.min(currentDelay * 2, 120000);
                     logger.warn("{} - 检测到HTML响应或JSON解析错误 (尝试 {}/{})", 
                         operationName, attempts, MAX_RETRY_ATTEMPTS);

@@ -34,7 +34,11 @@ public class TaskServiceImpl implements TaskService {
     @Transactional
     public void addLog(AnalysisTask task, String message, String level) {
         TaskLog log = new TaskLog(task, message, level);
-        logRepository.save(log);
+        try {
+            logRepository.save(log);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
