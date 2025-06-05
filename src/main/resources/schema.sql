@@ -62,6 +62,8 @@ CREATE TABLE field_rules (
     rule_type VARCHAR(20) NOT NULL,
     rule_content TEXT NOT NULL,
     confidence FLOAT,
+    category VARCHAR(255),
+    is_cross_table BOOLEAN DEFAULT FALSE,
     created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -70,10 +72,10 @@ CREATE TABLE analysis_results (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     task_id VARCHAR(36) NOT NULL,
     completed_time TIMESTAMP,
-    result_text TEXT,
-    summary_text TEXT,
+    result_text LONGTEXT,
+    summary_text LONGTEXT,
     field_count INTEGER,
-    error_message TEXT
+    error_message LONGTEXT
 );
 
 
@@ -113,3 +115,14 @@ CREATE TABLE IF NOT EXISTS rule_validation_results (
     error_message LONGTEXT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 创建文档报送范围表
+CREATE TABLE document_scopes (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    scope_content TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- 外键约束
+    CONSTRAINT fk_document_scopes_task FOREIGN KEY (task_id) REFERENCES analysis_tasks(id) ON DELETE CASCADE
+); 

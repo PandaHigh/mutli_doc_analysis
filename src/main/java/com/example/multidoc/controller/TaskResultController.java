@@ -3,6 +3,7 @@ package com.example.multidoc.controller;
 import com.example.multidoc.model.AnalysisTask;
 import com.example.multidoc.model.AnalysisResult;
 import com.example.multidoc.model.FieldRule;
+import com.example.multidoc.model.ExcelField;
 import com.example.multidoc.service.AnalysisService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,6 +78,9 @@ public class TaskResultController {
             // 获取字段规则
             List<FieldRule> fieldRules = analysisService.getFieldRules(task);
             
+            // 获取所有Excel字段
+            List<ExcelField> excelFields = analysisService.getExcelFieldsByTask(task);
+            
             logger.info("任务：{}，结果状态：{}", task.getTaskName(), "找到");
             logger.info("分析报告长度：{}", result.getSummaryText() != null ? result.getSummaryText().length() : 0);
             logger.info("字段规则数量：{}", fieldRules != null ? fieldRules.size() : 0);
@@ -85,6 +89,7 @@ public class TaskResultController {
             model.addAttribute("task", task);
             model.addAttribute("result", result);
             model.addAttribute("fieldRules", fieldRules);
+            model.addAttribute("excelFields", excelFields);
             
             return "task/result";
         } catch (Exception e) {

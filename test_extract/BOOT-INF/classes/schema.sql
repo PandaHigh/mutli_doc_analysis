@@ -62,6 +62,8 @@ CREATE TABLE field_rules (
     rule_type VARCHAR(20) NOT NULL,
     rule_content TEXT NOT NULL,
     confidence FLOAT,
+    category VARCHAR(255),
+    is_cross_table BOOLEAN DEFAULT FALSE,
     created_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

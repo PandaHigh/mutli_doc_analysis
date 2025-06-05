@@ -9,40 +9,33 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 import java.io.File;
-import java.util.concurrent.ConcurrentHashMap;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.function.Supplier;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import org.springframework.beans.factory.annotation.Qualifier;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import com.example.multidoc.model.WordSentence;
-import com.example.multidoc.repository.WordSentenceRepository;
-import com.example.multidoc.service.LuceneService;
-import com.example.multidoc.service.TaskService;
+import java.util.function.Supplier;
 
 @Service
 public class AnalysisService {
 
     private static final Logger logger = LoggerFactory.getLogger(AnalysisService.class);
     private static final int TOP_RELATED_FIELDS = 5; // Still relevant? Keep for now.
-    
+
     // --- New Step Constants for Resumability ---
     private static final String STEP_START = "start";
+    private static final String STEP_DOCUMENT_SCOPE_EXTRACTION = "document_scope_extraction";
     private static final String STEP_EXCEL_AND_FIELD_PROCESSING = "excel_and_field_processing";
     private static final String STEP_WORD_PROCESSING = "word_processing";
     private static final String STEP_LUCENE_ANALYSIS = "lucene_analysis";
@@ -89,6 +82,9 @@ public class AnalysisService {
     private FieldSentenceRelationRepository relationRepository;
 
     @Autowired
+    private DocumentScopeRepository documentScopeRepository;
+
+    @Autowired
     private LuceneService luceneService;
 
     @Autowired
@@ -102,10 +98,64 @@ public class AnalysisService {
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public void processTask(String taskId, boolean isResuming) {
-        AnalysisTask task = taskRepository.findById(taskId)
+        final AnalysisTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new RuntimeException("Task not found: " + taskId));
 
         try {
+            // --- Step 0: Document Scope Extraction ---
+            if (!isStepCompleted(task.getLastCompletedStep(), STEP_DOCUMENT_SCOPE_EXTRACTION)) {
+                logger.info("Task {} - Step: {}", taskId, STEP_DOCUMENT_SCOPE_EXTRACTION);
+                updateTaskProgress(taskId, STEP_DOCUMENT_SCOPE_EXTRACTION, "开始提取文档报送范围", 0);
+                taskService.addLog(task, "开始提取文档报送范围", "INFO");
+
+                // 如果是恢复任务，先清理之前的数据
+                if (isResuming) {
+                    documentScopeRepository.deleteByTask(task);
+                    taskService.addLog(task, "清理之前的文档报送范围数据", "INFO");
+                }
+
+                // 处理所有Word文档
+                for (String filePath : task.getWordFilePaths()) {
+                    try {
+                        File file = new File(filePath);
+                        if (!file.exists()) {
+                            taskService.addLog(task, "文件不存在: " + filePath, "ERROR");
+                            continue;
+                        }
+
+                        // 提取文档的前2000字
+                        String documentPrefix = documentService.extractDocumentPrefix(filePath);
+
+                        String fileName = file.getName();
+                        taskService.addLog(task, "已提取文档前缀: " + fileName, "INFO");
+
+                        // 调用AI服务提取报送范围
+                        String scopeContent = aiService.extractDocumentScope(documentPrefix, fileName);
+                        taskService.addLog(task, "已提取文档报送范围: " + fileName, "INFO");
+
+                        // 保存文档报送范围
+                        DocumentScope documentScope = new DocumentScope();
+                        documentScope.setTask(task);
+                        documentScope.setFilePath(filePath);
+                        documentScope.setFileName(fileName);
+                        documentScope.setScopeContent(scopeContent);
+                        documentScopeRepository.save(documentScope);
+                        taskService.addLog(task, "已保存文档报送范围: " + fileName, "INFO");
+
+                    } catch (Exception e) {
+                        logger.error("提取文档报送范围失败: " + filePath, e);
+                        taskService.addLog(task, "提取文档报送范围失败: " + e.getMessage(), "ERROR");
+                    }
+                }
+
+                // 更新任务状态
+                updateTaskProgress(taskId, STEP_DOCUMENT_SCOPE_EXTRACTION, "文档报送范围提取完成", 100);
+                AnalysisTask updatedTask = taskRepository.findById(taskId).get(); // 重新获取任务
+                updatedTask.setLastCompletedStep(STEP_DOCUMENT_SCOPE_EXTRACTION);
+                taskRepository.save(updatedTask);
+                taskService.addLog(task, "文档报送范围提取步骤完成", "INFO");
+            }
+
             // --- Step 1: Excel and Field Processing ---
             if (!isStepCompleted(task.getLastCompletedStep(), STEP_EXCEL_AND_FIELD_PROCESSING)) {
                 logger.info("Task {} - Step: {}", taskId, STEP_EXCEL_AND_FIELD_PROCESSING);
@@ -143,7 +193,7 @@ public class AnalysisService {
                 // Call AI service for field categorization
                 if (!allFields.isEmpty()) {
                     taskService.addLog(task, "开始字段分类", "INFO");
-                    
+
                     int totalFields = allFields.size();
                     int batchSize = 100; // 获取fieldBatchSize的值
                     try {
@@ -155,13 +205,13 @@ public class AnalysisService {
                     } catch (Exception e) {
                         logger.warn("读取字段批次配置失败，使用默认值100", e);
                     }
-                    
+
                     int totalBatches = (int) Math.ceil((double) totalFields / batchSize);
-                    taskService.addLog(task, String.format("总共需要处理 %d 个字段，分为 %d 个批次，每批次 %d 个字段", 
+                    taskService.addLog(task, String.format("总共需要处理 %d 个字段，分为 %d 个批次，每批次 %d 个字段",
                         totalFields, totalBatches, batchSize), "INFO");
-                    updateTaskProgress(taskId, STEP_EXCEL_AND_FIELD_PROCESSING, 
+                    updateTaskProgress(taskId, STEP_EXCEL_AND_FIELD_PROCESSING,
                         String.format("开始字段分类 (0/%d 批次)", totalBatches), 20);
-                    
+
                     // 调用AI服务进行字段分类，带进度回调
                     JsonNode categoriesNode = callAIServiceWithRetry("Field Categorization", () ->
                         aiService.categorizeFields(allFields, (currentBatch, totalBatch) -> {
@@ -183,12 +233,12 @@ public class AnalysisService {
                                     // Create and save field directly from AI response
                                     ExcelField field = new ExcelField();
                                     field.setTask(task);
-                                    field.setTableName(fieldNode.has("tableName") ? 
+                                    field.setTableName(fieldNode.has("tableName") ?
                                         fieldNode.get("tableName").asText() : null);
                                     field.setFieldName(fieldNode.get("fieldName").asText());
-                                    field.setFieldType(fieldNode.has("fieldType") ? 
+                                    field.setFieldType(fieldNode.has("fieldType") ?
                                         fieldNode.get("fieldType").asText() : "STRING");
-                                    field.setDescription(fieldNode.has("description") ? 
+                                    field.setDescription(fieldNode.has("description") ?
                                         fieldNode.get("description").asText() : field.getFieldName());
                                     field.setCategory(categoryName);
                                     try {
@@ -196,7 +246,7 @@ public class AnalysisService {
                                     } catch (Exception e) {
                                         logger.error(e.getMessage());
                                     }
-                                    logger.debug("Task {} - Saved field '{}' with category '{}'", 
+                                    logger.debug("Task {} - Saved field '{}' with category '{}'",
                                         task.getId(), field.getFieldName(), categoryName);
                                 }
                             }
@@ -222,13 +272,13 @@ public class AnalysisService {
                 logger.info("Task {} - Step: {}", taskId, STEP_WORD_PROCESSING);
                 updateTaskProgress(taskId, STEP_WORD_PROCESSING, "Starting Word processing (sentence-level)", 0);
                 taskService.addLog(task, "开始处理Word文档", "INFO");
-                
+
                 // Only delete and reprocess if the step was not completed
                 if (isResuming) {
                     sentenceRepository.deleteByTask(task);
                     taskService.addLog(task, "清理之前的句子数据", "INFO");
                 }
-                
+
                 try {
                     documentService.processWordDocuments(task);
                     taskService.addLog(task, "Word文档处理完成", "INFO");
@@ -237,7 +287,7 @@ public class AnalysisService {
                     taskService.addLog(task, "Word文档处理失败: " + e.getMessage(), "ERROR");
                     throw new RuntimeException("Word processing failed: " + e.getMessage(), e);
                 }
-                
+
                 updateTaskProgress(taskId, STEP_WORD_PROCESSING, "Word processing complete", 100);
                 task.setLastCompletedStep(STEP_WORD_PROCESSING);
                 taskRepository.save(task);
@@ -255,10 +305,10 @@ public class AnalysisService {
 
                 List<ExcelField> allFields = fieldRepository.findByTask(task);
                 List<WordSentence> allSentences = sentenceRepository.findByTask(task);
-                
-                logger.info("Task {} - Analyzing relevance between {} Excel fields and {} Word sentences", 
+
+                logger.info("Task {} - Analyzing relevance between {} Excel fields and {} Word sentences",
                            taskId, allFields.size(), allSentences.size());
-                taskService.addLog(task, String.format("分析%d个Excel字段和%d个Word句子的相关性", 
+                taskService.addLog(task, String.format("分析%d个Excel字段和%d个Word句子的相关性",
                     allFields.size(), allSentences.size()), "INFO");
 
                 // 使用 Lucene 评估相关性
@@ -273,7 +323,7 @@ public class AnalysisService {
                 logger.info("Task {} - Reusing completed Lucene analysis results", taskId);
                 taskService.addLog(task, "复用已完成的Lucene分析结果", "INFO");
             }
-            
+
             // --- Step 4: Rule Extraction ---
             if (!isStepCompleted(task.getLastCompletedStep(), STEP_RULE_EXTRACTION)) {
                 logger.info("Task {} - Step: {}", taskId, STEP_RULE_EXTRACTION);
@@ -296,7 +346,7 @@ public class AnalysisService {
                         taskService.addLog(task, String.format("处理分类'%s'的规则提取", category), "INFO");
                         extractRulesForCategory(task, category, fieldsInCategory);
                     }
-                    
+
                     // Update progress
                     int progress = (int) ((processedCategories.incrementAndGet() * 100.0) / totalCategories);
                     String message = String.format("Processed %d/%d categories", processedCategories.get(), totalCategories);
@@ -349,6 +399,7 @@ public class AnalysisService {
     private boolean isStepCompleted(String lastCompletedStep, String targetStep) {
         List<String> stepsOrder = Arrays.asList(
             STEP_START,
+            STEP_DOCUMENT_SCOPE_EXTRACTION,
             STEP_EXCEL_AND_FIELD_PROCESSING,
             STEP_WORD_PROCESSING,
             STEP_LUCENE_ANALYSIS,
@@ -379,86 +430,125 @@ public class AnalysisService {
         }
     }
 
+    /**
+     * 为特定类别提取规则
+     */
     private void extractRulesForCategory(AnalysisTask task, String category, List<ExcelField> fieldsInCategory) {
+        taskService.addLog(task, String.format("开始为类别 '%s' 提取规则，包含 %d 个字段", category, fieldsInCategory.size()), "INFO");
+
         try {
-            // 记录分类中的具体字段信息
+            // 获取以句子为单位的文档内容
+            List<WordSentence> sentences = sentenceRepository.findByTask(task);
+            taskService.addLog(task, String.format("为规则提取加载了 %d 个文档句子", sentences.size()), "INFO");
+
+            // 获取文档报送范围信息
+            List<DocumentScope> documentScopes = documentScopeRepository.findByTask(task);
+            Map<String, String> scopeMap = new HashMap<>();
+            if (documentScopes != null && !documentScopes.isEmpty()) {
+                for (DocumentScope scope : documentScopes) {
+                    if (scope.getScopeContent() != null && !scope.getScopeContent().trim().isEmpty()) {
+                        scopeMap.put(scope.getFileName(), scope.getScopeContent());
+                    }
+                }
+            }
+
+            // 记录分类中的具体字段信息，包含表名
             StringBuilder fieldDetails = new StringBuilder();
             fieldDetails.append("分类 '").append(category).append("' 包含以下字段：\n");
             for (ExcelField field : fieldsInCategory) {
-                fieldDetails.append(String.format("- 字段名: %s, 描述: %s\n", 
-                    field.getFieldName(), 
-                    field.getDescription() != null ? field.getDescription() : "无描述"));
+                fieldDetails.append(String.format("- 字段名: %s\n", field.getFieldName()));
+                fieldDetails.append(String.format("  表名: %s\n", field.getTableName() != null ? field.getTableName() : "未指定"));
+                fieldDetails.append(String.format("  描述: %s\n", 
+                        field.getDescription() != null ? field.getDescription() : "无描述"));
+                fieldDetails.append("  ---\n");
             }
             taskService.addLog(task, fieldDetails.toString(), "INFO");
-            
+
             logger.info("Task {} - 开始处理分类 '{}' 中的 {} 个字段", task.getId(), category, fieldsInCategory.size());
-            
-            // 收集该分类所有字段关联的句子
+
+            // 收集该分类所有字段关联的句子及其报送范围
             Set<WordSentence> allRelevantSentences = new HashSet<>();
+            StringBuilder scopeInfoBuilder = new StringBuilder();
+            Set<String> processedFiles = new HashSet<>();
+
             for (ExcelField field : fieldsInCategory) {
                 // 使用新的关系表获取相关句子
                 List<FieldSentenceRelation> relations = relationRepository.findByFieldIdOrderByRelevanceScoreDesc(field.getId());
-                
+
                 // 记录字段的相关句子详情
                 StringBuilder sentenceDetails = new StringBuilder();
-                sentenceDetails.append(String.format("\n字段 '%s' 的相关句子（共 %d 个）：\n", 
-                    field.getFieldName(), relations.size()));
-                
+                sentenceDetails.append(String.format("\n字段 '%s' (表名: %s) 的相关句子（共 %d 个）：\n",
+                        field.getFieldName(), 
+                        field.getTableName() != null ? field.getTableName() : "未指定",
+                        relations.size()));
+
                 for (FieldSentenceRelation relation : relations) {
                     sentenceDetails.append(String.format("- 相关性得分: %.2f\n", relation.getRelevanceScore()));
                     sentenceDetails.append(String.format("  来源文件: %s\n", relation.getSourceFile()));
                     sentenceDetails.append(String.format("  句子内容: %s\n", relation.getSentenceContent()));
                     sentenceDetails.append("  ---\n");
-                    
+
                     WordSentence sentence = new WordSentence();
                     sentence.setId(relation.getSentenceId());
                     sentence.setContent(relation.getSentenceContent());
                     sentence.setSourceFile(relation.getSourceFile());
                     allRelevantSentences.add(sentence);
+
+                    // 收集句子的报送范围信息
+                    String sourceFile = relation.getSourceFile();
+                    if (!processedFiles.contains(sourceFile) && scopeMap.containsKey(sourceFile)) {
+                        scopeInfoBuilder.append("### ").append(sourceFile).append("\n");
+                        scopeInfoBuilder.append(scopeMap.get(sourceFile)).append("\n\n");
+                        processedFiles.add(sourceFile);
+                    }
                 }
-                
+
                 taskService.addLog(task, sentenceDetails.toString(), "INFO");
             }
-            
+            taskService.addLog(task, scopeInfoBuilder.toString(), "INFO");
+
+
             // 从集合转为列表并去重
             List<WordSentence> dedupedSentences = new ArrayList<>(allRelevantSentences);
-            
+
             // 按源文件和索引排序，保持上下文结构
             dedupedSentences.sort(Comparator.comparing(WordSentence::getSourceFile).thenComparingInt(WordSentence::getSentenceIndex));
-            
+
             logger.info("Task {} - 分类 '{}' 关联的去重句子数量: {}", task.getId(), category, dedupedSentences.size());
-            
+
             // 构建句子文本
             StringBuilder sentencesText = new StringBuilder();
             for (WordSentence sentence : dedupedSentences) {
                 sentencesText.append(sentence.getContent()).append("\n");
             }
-            
+
             // 构建规则提取提示
-            String prompt = String.format(
-                "分类: %s\n\n字段列表:\n%s\n相关文本:\n%s",
-                category,
-                fieldDetails.toString(),
-                sentencesText.toString()
-            );
-            
-            logger.info("Task {} - 发送给AI的规则提取提示内容：\n{}", task.getId(), prompt);
-            
-            // 调用AI服务提取规则
-            JsonNode rulesNode = callAIServiceWithRetry("Rule Extraction", () ->
-                aiService.extractRules(prompt, fieldsInCategory)
+            String promptContent = String.format(
+                    "分类: %s\n\n字段列表:\n%s\n相关文本:\n%s",
+                    category,
+                    fieldDetails,
+                    sentencesText
             );
 
-            // 保存规则
-            processAndSaveRules(task, rulesNode);
-            
+            // 构建最终的提示，添加所有相关句子的报送范围信息
+            final String prompt = promptContent + "\n\n## 相关文档的报送范围信息\n\n" + scopeInfoBuilder;
+            logger.info("Task {} - 发送给AI的规则提取提示内容：\n{}", task.getId(), prompt);
+
+            // 为类别提取规则
+            JsonNode rulesNode = callAIServiceWithRetry("Rule Extraction", () -> aiService.extractRules(prompt, fieldsInCategory));
+
+            // 处理和保存规则
+            processAndSaveRules(category, task, rulesNode);
+
+            taskService.addLog(task, String.format("已完成类别 '%s' 的规则提取", category), "INFO");
         } catch (Exception e) {
-            logger.error("Task {} - 处理分类 '{}' 时出错", task.getId(), category, e);
-            throw new RuntimeException("规则提取失败: " + e.getMessage(), e);
+            logger.error(String.format("提取类别 '%s' 规则失败", category), e);
+            taskService.addLog(task, String.format("提取类别 '%s' 规则失败: %s", category, e.getMessage()), "ERROR");
+            throw new RuntimeException(String.format("提取类别 '%s' 规则失败", category), e);
         }
     }
 
-    private void processAndSaveRules(AnalysisTask task, JsonNode rulesNode) {
+    private void processAndSaveRules(String category, AnalysisTask task, JsonNode rulesNode) {
         try {
             if (rulesNode.has("rules") && rulesNode.get("rules").isArray()) {
                 for (JsonNode ruleNode : rulesNode.get("rules")) {
@@ -466,9 +556,10 @@ public class AnalysisService {
                     rule.setTask(task);
                     rule.setRuleType(FieldRule.RuleType.valueOf(ruleNode.get("type").asText().toUpperCase()));
                     rule.setRuleContent(ruleNode.get("content").asText());
-                    rule.setConfidence(ruleNode.has("confidence") ? 
+                    rule.setConfidence(ruleNode.has("confidence") ?
                         (float) ruleNode.get("confidence").asDouble() : 1.0f);
-                    
+
+                    rule.setCategory(category);
                     // 处理相关字段
                     List<String> fieldNames = new ArrayList<>();
                     if (ruleNode.has("fields") && ruleNode.get("fields").isArray()) {
@@ -477,7 +568,24 @@ public class AnalysisService {
                         }
                     }
                     rule.setFieldNames(objectMapper.writeValueAsString(fieldNames));
-                    
+
+                    // 判断是否为跨表规则
+                    boolean isCrossTable = false;
+                    if (ruleNode.has("isCrossTable")) {
+                        isCrossTable = ruleNode.get("isCrossTable").asBoolean();
+                    } else {
+                        // 如果没有明确指定，则根据字段名判断是否跨表
+                        Set<String> tableNames = new HashSet<>();
+                        for (String fieldName : fieldNames) {
+                            String tableName = getTableNameFromField(fieldName);
+                            if (tableName != null) {
+                                tableNames.add(tableName);
+                            }
+                        }
+                        isCrossTable = tableNames.size() > 1;
+                    }
+                    rule.setIsCrossTable(isCrossTable);
+
                     ruleRepository.save(rule);
                 }
             }
@@ -487,18 +595,29 @@ public class AnalysisService {
         }
     }
 
+    private String getTableNameFromField(String fieldName) {
+        // 从字段名中提取表名
+        // 这里假设字段名格式为 "表名.字段名" 或 "表名_字段名"
+        if (fieldName.contains(".")) {
+            return fieldName.split("\\.")[0];
+        } else if (fieldName.contains("_")) {
+            return fieldName.split("_")[0];
+        }
+        return null;
+    }
+
     private void generateResults(AnalysisTask task) {
         try {
             // 获取所有分析结果
             List<ExcelField> fields = fieldRepository.findByTask(task);
             List<FieldRule> rules = ruleRepository.findByTask(task);
-            
+
             // 构建结果文本
             StringBuilder resultText = new StringBuilder();
             resultText.append("任务ID: ").append(task.getId()).append("\n");
             resultText.append("任务名称: ").append(task.getTaskName()).append("\n");
             resultText.append("完成时间: ").append(LocalDateTime.now()).append("\n\n");
-            
+
             // 添加字段信息
             resultText.append("字段信息:\n");
             for (ExcelField field : fields) {
@@ -507,7 +626,7 @@ public class AnalysisService {
                 resultText.append("  描述: ").append(field.getDescription()).append("\n");
                 resultText.append("  分类: ").append(field.getCategory()).append("\n\n");
             }
-            
+
             // 添加规则信息
             resultText.append("规则信息:\n");
             for (FieldRule rule : rules) {
@@ -516,17 +635,17 @@ public class AnalysisService {
                 resultText.append("  置信度: ").append(rule.getConfidence()).append("\n");
                 resultText.append("  相关字段: ").append(rule.getFieldNames()).append("\n\n");
             }
-            
+
             // 确保结果目录存在
             Path resultDir = Paths.get("uploads/results");
             Files.createDirectories(resultDir);
-            
+
             // 写入结果文件
             Path resultPath = resultDir.resolve(task.getId() + "_result.txt");
             try (FileWriter writer = new FileWriter(resultPath.toFile())) {
                 writer.write(resultText.toString());
             }
-            
+
             // 保存到数据库
             AnalysisResult analysisResult = new AnalysisResult();
             analysisResult.setTask(task);
@@ -535,7 +654,7 @@ public class AnalysisService {
             analysisResult.setFieldCount(fields.size());
             analysisResult.setSummaryText(""); // 不再生成分析报告
             resultRepository.save(analysisResult);
-            
+
         } catch (Exception e) {
             logger.error("Failed to generate results", e);
             throw new RuntimeException("Failed to generate results: " + e.getMessage(), e);
@@ -601,7 +720,7 @@ public class AnalysisService {
         }
         task.setStatus(AnalysisTask.TaskStatus.RUNNING);
         taskRepository.save(task);
-        
+
         return CompletableFuture.supplyAsync(() -> {
             try {
                 processTask(taskId, false);
@@ -654,6 +773,13 @@ public class AnalysisService {
     }
 
     /**
+     * 获取任务的所有Excel字段
+     */
+    public List<ExcelField> getExcelFieldsByTask(AnalysisTask task) {
+        return fieldRepository.findByTask(task);
+    }
+
+    /**
      * 导出结果
      */
     public String exportResults(AnalysisTask task) {
@@ -662,17 +788,17 @@ public class AnalysisService {
             String exportPath = configRepository.findByConfigKey("result_export_path")
                     .orElseThrow(() -> new RuntimeException("Export path not configured"))
                     .getConfigValue();
-            
+
             Path exportDir = Paths.get(exportPath).toAbsolutePath();
             Files.createDirectories(exportDir);
-            
+
             String fileName = task.getId() + "_" + task.getTaskName().replaceAll("[^a-zA-Z0-9\\-_\\.]", "_") + "_result.txt";
             Path filePath = exportDir.resolve(fileName);
-            
+
             try (FileWriter writer = new FileWriter(filePath.toFile())) {
                 writer.write(result.getResultText());
             }
-            
+
             logger.info("Exported result to: {}", filePath);
             return exportPath + "/" + fileName;
         } catch (IOException e) {
@@ -685,7 +811,7 @@ public class AnalysisService {
         int attempts = 0;
         long currentDelay = RETRY_DELAY_MS;
         Exception lastException = null;
-        
+
         while (attempts < MAX_RETRY_ATTEMPTS) {
             try {
                 logger.info("执行{}操作 (尝试 {}/{})", operationName, attempts + 1, MAX_RETRY_ATTEMPTS);
@@ -693,47 +819,47 @@ public class AnalysisService {
             } catch (Exception e) {
                 attempts++;
                 lastException = e;
-                
+
                 // 分析异常类型
                 String errorMessage = e.getMessage();
-                boolean isJsonParseError = 
-                    (e instanceof com.fasterxml.jackson.core.JsonParseException) || 
+                boolean isJsonParseError =
+                    (e instanceof com.fasterxml.jackson.core.JsonParseException) ||
                     (e.getCause() instanceof com.fasterxml.jackson.core.JsonParseException) ||
                     (errorMessage != null && errorMessage.contains("JsonParseException"));
-                
-                boolean isHTMLorJSONError = errorMessage != null && 
+
+                boolean isHTMLorJSONError = errorMessage != null &&
                     (errorMessage.contains("text/html") || isJsonParseError);
-                
+
                 // 根据错误类型调整重试延迟
                 long retryDelay = currentDelay;
                 if (isJsonParseError) {
                     // 特别处理JSON解析错误，这通常是由AI返回的格式问题引起的
                     // 可能需要快速重试
                     retryDelay = Math.min(currentDelay, 5000); // 使用较短的延迟，因为这很可能是内容问题而不是服务问题
-                    logger.warn("{} - 检测到JSON解析错误，可能是AI返回的格式问题 (尝试 {}/{})", 
+                    logger.warn("{} - 检测到JSON解析错误，可能是AI返回的格式问题 (尝试 {}/{})",
                         operationName, attempts, MAX_RETRY_ATTEMPTS);
                 } else if (isHTMLorJSONError) {
                     // HTML响应或JSON解析错误可能是临时服务问题，使用更长延迟
                     retryDelay = Math.min(currentDelay * 2, 120000);
-                    logger.warn("{} - 检测到HTML响应或JSON解析错误 (尝试 {}/{})", 
+                    logger.warn("{} - 检测到HTML响应或JSON解析错误 (尝试 {}/{})",
                         operationName, attempts, MAX_RETRY_ATTEMPTS);
-                } else if (errorMessage != null && 
+                } else if (errorMessage != null &&
                           (errorMessage.contains("429") || errorMessage.contains("too many requests"))) {
                     // 限流错误，使用更长延迟
                     retryDelay = Math.min(currentDelay * 3, 180000);
-                    logger.warn("{} - 检测到请求频率限制 (尝试 {}/{})", 
+                    logger.warn("{} - 检测到请求频率限制 (尝试 {}/{})",
                         operationName, attempts, MAX_RETRY_ATTEMPTS);
                 }
-                
+
                 if (attempts >= MAX_RETRY_ATTEMPTS) {
                     logger.error("{} - 已达到最大重试次数 ({}次)", operationName, MAX_RETRY_ATTEMPTS, e);
-                    throw new RuntimeException(operationName + " 失败，已达到最大重试次数(" + 
+                    throw new RuntimeException(operationName + " 失败，已达到最大重试次数(" +
                         MAX_RETRY_ATTEMPTS + "): " + errorMessage, e);
                 }
-                
-                logger.warn("{} - 尝试 {} 失败: {}, 将在 {} 毫秒后重试...", 
+
+                logger.warn("{} - 尝试 {} 失败: {}, 将在 {} 毫秒后重试...",
                     operationName, attempts, errorMessage, retryDelay);
-                
+
                 try {
                     Thread.sleep(retryDelay);
                     currentDelay = retryDelay; // 更新当前延迟时间
@@ -743,7 +869,7 @@ public class AnalysisService {
                 }
             }
         }
-        
+
         // 不应该到达这里，但为了编译通过
         throw new RuntimeException(operationName + " 失败，已达到最大重试次数");
     }

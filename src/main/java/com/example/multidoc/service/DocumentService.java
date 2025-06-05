@@ -240,4 +240,41 @@ public class DocumentService {
             throw new RuntimeException("处理Excel文件失败: " + e.getMessage(), e);
         }
     }
+
+    /**
+     * 从Word文档提取前2000字
+     * @param filePath 文档路径
+     * @return 文档前2000字内容
+     */
+    public String extractDocumentPrefix(String filePath) throws IOException {
+        File file = new File(filePath);
+        if (!file.exists()) {
+            throw new RuntimeException("文件不存在: " + filePath);
+        }
+        
+        StringBuilder content = new StringBuilder();
+        final int MAX_LENGTH = 2000;
+        
+        try (FileInputStream fis = new FileInputStream(file);
+             XWPFDocument document = new XWPFDocument(fis)) {
+            
+            for (XWPFParagraph paragraph : document.getParagraphs()) {
+                String text = paragraph.getText().trim();
+                if (!text.isEmpty()) {
+                    content.append(text).append("\n");
+                    
+                    // 如果已经超过2000字，则截断
+                    if (content.length() >= MAX_LENGTH) {
+                        content.setLength(MAX_LENGTH);
+                        break;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("提取文档前缀失败: " + filePath, e);
+            throw new IOException("提取文档前缀失败: " + e.getMessage(), e);
+        }
+        
+        return content.toString();
+    }
 } 

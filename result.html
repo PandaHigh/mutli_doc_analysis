@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html>
 <head>
     <title>Analysis Result</title>
     <meta charset="UTF-8">
@@ -283,18 +283,18 @@
 </head>
 <body>
     <div class="container">
-        <h1>分析任务结果: <span th:text="${task.taskName}"></span></h1>
+        <h1>分析任务结果: <span>测试任务</span></h1>
         
         <!-- 任务基本信息 -->
         <div class="task-info">
-            <p><strong>任务ID：</strong><span th:text="${task.id}"></span></p>
-            <p><strong>创建时间：</strong><span th:text="${#temporals.format(task.createdTime, 'yyyy-MM-dd HH:mm:ss')}"></span></p>
-            <p><strong>完成时间：</strong><span th:text="${task.completedTime != null ? #temporals.format(task.completedTime, 'yyyy-MM-dd HH:mm:ss') : '未完成'}"></span></p>
-            <p><strong>状态：</strong><span th:text="${task.status}"></span></p>
+            <p><strong>任务ID：</strong><span>test-task-123</span></p>
+            <p><strong>创建时间：</strong><span>2025-06-05 11:01:05</span></p>
+            <p><strong>完成时间：</strong><span>未完成</span></p>
+            <p><strong>状态：</strong><span>COMPLETED</span></p>
         </div>
         
-        <div th:if="${error}" class="error-message" th:text="${error}"></div>
-        <div th:if="${message}" class="success-message" th:text="${message}"></div>
+        
+        
         
         <!-- 规则验证入口 -->
         <div class="section validation-panel">
@@ -302,8 +302,8 @@
             <p>上传Excel文件以验证现有规则并发现新规则。系统将分析Excel数据并与现有规则进行对比。</p>
             
             <div class="validation-actions">
-                <a th:href="@{/task/{taskId}/validate(taskId=${task.id})}" class="btn btn-success">开始验证规则</a>
-                <a th:href="@{/task/{taskId}/validation-history(taskId=${task.id})}" class="btn btn-info">查看验证历史</a>
+                <a href="/task/test-task-123/validate" class="btn btn-success">开始验证规则</a>
+                <a href="/task/test-task-123/validation-history" class="btn btn-info">查看验证历史</a>
             </div>
         </div>
         
@@ -324,7 +324,7 @@
         <!-- 字段规则列表 -->
         <div class="section">
             <h2>规则列表</h2>
-            <div th:if="${fieldRules != null && !fieldRules.empty}">
+            <div>
                 <!-- 规则搜索框 -->
                 <div class="search-box">
                     <input type="text" id="ruleSearch" class="search-input" placeholder="搜索规则内容或字段名称...">
@@ -360,59 +360,146 @@
                 
                 <!-- 规则计数显示 -->
                 <div class="rules-count">
-                    显示 <span id="visibleRulesCount">0</span> / <span id="totalRulesCount" th:text="${fieldRules.size()}"></span> 条规则
+                    显示 <span id="visibleRulesCount">0</span> / <span id="totalRulesCount">4</span> 条规则
                 </div>
                 
                 <div class="field-rules" id="rulesContainer">
-                    <div th:each="rule : ${fieldRules}" class="rule-item" 
-                         th:attr="data-rule-type=${rule.ruleType}, data-table-type=${rule.isCrossTable ? 'CROSS' : 'SINGLE'}, data-category=${rule.category}, data-search-text=${rule.ruleContent.toLowerCase() + ' ' + rule.fieldNames.toLowerCase()}">
+                    <div class="rule-item" data-rule-type="EXPLICIT" data-table-type="SINGLE" data-category="报表基本信息" data-search-text="测试规则1：报表基本信息相关规则 [&quot;field1&quot;,&quot;field2&quot;]">
                         <div class="rule-header">
                             <div class="rule-type">
                                 <span>规则</span>
-                                <span th:if="${rule.ruleType == T(com.example.multidoc.model.FieldRule.RuleType).EXPLICIT}" class="badge badge-explicit">显式</span>
-                                <span th:if="${rule.ruleType == T(com.example.multidoc.model.FieldRule.RuleType).IMPLICIT}" class="badge badge-implicit">隐含</span>
-                                <span th:if="${rule.isCrossTable}" class="badge badge-cross-table">跨表</span>
-                                <span th:if="${!rule.isCrossTable}" class="badge badge-single-table">单表</span>
+                                <span class="badge badge-explicit">显式</span>
+                                
+                                
+                                <span class="badge badge-single-table">单表</span>
                             </div>
                             <div class="confidence">
                                 <span>置信度: </span>
-                                <strong th:text="${#numbers.formatDecimal(rule.confidence, 1, 2)}"></strong>
+                                <strong>0.90</strong>
                                 <div class="confidence-bar">
-                                    <div class="confidence-fill" th:style="'width:' + ${rule.confidence * 100} + '%'"></div>
+                                    <div class="confidence-fill" style="width:90.0%"></div>
                                 </div>
                             </div>
                         </div>
                         
                         <div class="rule-fields">
                             <strong>相关字段:</strong>
-                            <div class="field-names" th:attr="data-field-names=${rule.fieldNames}"></div>
+                            <div class="field-names" data-field-names="[&quot;field1&quot;,&quot;field2&quot;]"></div>
                         </div>
                         
                         <div class="rule-content">
                             <strong>规则内容:</strong>
-                            <div class="rule-content-text" th:text="${rule.ruleContent.length() > 150 ? rule.ruleContent.substring(0, 150) + '...' : rule.ruleContent}"></div>
-                            <div class="rule-content-full" style="display: none;" th:text="${rule.ruleContent}"></div>
-                            <button class="rule-expand-btn" th:if="${rule.ruleContent.length() > 150}">展开全文</button>
+                            <div class="rule-content-text">测试规则1：报表基本信息相关规则</div>
+                            <div class="rule-content-full" style="display: none;">测试规则1：报表基本信息相关规则</div>
+                            
+                        </div>
+                    </div>
+                    <div class="rule-item" data-rule-type="IMPLICIT" data-table-type="SINGLE" data-category="现金流入" data-search-text="测试规则2：现金流入相关规则 [&quot;field3&quot;,&quot;field4&quot;]">
+                        <div class="rule-header">
+                            <div class="rule-type">
+                                <span>规则</span>
+                                
+                                <span class="badge badge-implicit">隐含</span>
+                                
+                                <span class="badge badge-single-table">单表</span>
+                            </div>
+                            <div class="confidence">
+                                <span>置信度: </span>
+                                <strong>0.80</strong>
+                                <div class="confidence-bar">
+                                    <div class="confidence-fill" style="width:80.0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="rule-fields">
+                            <strong>相关字段:</strong>
+                            <div class="field-names" data-field-names="[&quot;field3&quot;,&quot;field4&quot;]"></div>
+                        </div>
+                        
+                        <div class="rule-content">
+                            <strong>规则内容:</strong>
+                            <div class="rule-content-text">测试规则2：现金流入相关规则</div>
+                            <div class="rule-content-full" style="display: none;">测试规则2：现金流入相关规则</div>
+                            
+                        </div>
+                    </div>
+                    <div class="rule-item" data-rule-type="EXPLICIT" data-table-type="CROSS" data-category="报表基本信息" data-search-text="测试规则3：跨表规则 [&quot;field1&quot;,&quot;field5&quot;]">
+                        <div class="rule-header">
+                            <div class="rule-type">
+                                <span>规则</span>
+                                <span class="badge badge-explicit">显式</span>
+                                
+                                <span class="badge badge-cross-table">跨表</span>
+                                
+                            </div>
+                            <div class="confidence">
+                                <span>置信度: </span>
+                                <strong>0.95</strong>
+                                <div class="confidence-bar">
+                                    <div class="confidence-fill" style="width:95.0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="rule-fields">
+                            <strong>相关字段:</strong>
+                            <div class="field-names" data-field-names="[&quot;field1&quot;,&quot;field5&quot;]"></div>
+                        </div>
+                        
+                        <div class="rule-content">
+                            <strong>规则内容:</strong>
+                            <div class="rule-content-text">测试规则3：跨表规则</div>
+                            <div class="rule-content-full" style="display: none;">测试规则3：跨表规则</div>
+                            
+                        </div>
+                    </div>
+                    <div class="rule-item" data-rule-type="EXPLICIT" data-table-type="SINGLE" data-category="现金流入" data-search-text="测试规则4：另一个现金流入规则 [&quot;field3&quot;,&quot;field4&quot;]">
+                        <div class="rule-header">
+                            <div class="rule-type">
+                                <span>规则</span>
+                                <span class="badge badge-explicit">显式</span>
+                                
+                                
+                                <span class="badge badge-single-table">单表</span>
+                            </div>
+                            <div class="confidence">
+                                <span>置信度: </span>
+                                <strong>0.85</strong>
+                                <div class="confidence-bar">
+                                    <div class="confidence-fill" style="width:85.0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="rule-fields">
+                            <strong>相关字段:</strong>
+                            <div class="field-names" data-field-names="[&quot;field3&quot;,&quot;field4&quot;]"></div>
+                        </div>
+                        
+                        <div class="rule-content">
+                            <strong>规则内容:</strong>
+                            <div class="rule-content-text">测试规则4：另一个现金流入规则</div>
+                            <div class="rule-content-full" style="display: none;">测试规则4：另一个现金流入规则</div>
+                            
                         </div>
                     </div>
                 </div>
             </div>
-            <div th:if="${fieldRules == null || fieldRules.empty}">
-                未找到字段规则。
-            </div>
+            
         </div>
         
         <!-- 操作按钮 -->
         <div class="section">
-            <a th:href="@{/task/{taskId}/export(taskId=${task.id})}" class="btn">导出结果</a>
-            <a th:href="@{/}" class="btn" style="background-color: #6c757d;">返回首页</a>
+            <a href="/task/test-task-123/export" class="btn">导出结果</a>
+            <a href="/" class="btn" style="background-color: #6c757d;">返回首页</a>
         </div>
     </div>
 
-    <script th:inline="javascript">
+    <script>
         /*<![CDATA[*/
-        const allRules = /*[[${fieldRules}]]*/ [];
-        const allExcelFields = /*[[${excelFields}]]*/ []; // Store excelFields
+        const allRules = [{"id":1,"task":{"id":"test-task-123","taskName":"\u6D4B\u8BD5\u4EFB\u52A1","createdTime":"2025-06-05T11:01:05","completedTime":null,"status":"COMPLETED","progress":100,"lastCompletedStep":"STEP_COMPLETE","chunkSize":5000,"wordFilePaths":[],"excelFilePaths":[],"resultFilePath":"uploads\/results\/test-task-123_result.json"},"fieldNames":"[\"field1\",\"field2\"]","ruleType":"EXPLICIT","ruleContent":"\u6D4B\u8BD5\u89C4\u52191\uFF1A\u62A5\u8868\u57FA\u672C\u4FE1\u606F\u76F8\u5173\u89C4\u5219","confidence":0.9,"isCrossTable":false,"category":"\u62A5\u8868\u57FA\u672C\u4FE1\u606F","createdTime":"2025-06-05T11:01:19"},{"id":2,"task":{"id":"test-task-123","taskName":"\u6D4B\u8BD5\u4EFB\u52A1","createdTime":"2025-06-05T11:01:05","completedTime":null,"status":"COMPLETED","progress":100,"lastCompletedStep":"STEP_COMPLETE","chunkSize":5000,"wordFilePaths":[],"excelFilePaths":[],"resultFilePath":"uploads\/results\/test-task-123_result.json"},"fieldNames":"[\"field3\",\"field4\"]","ruleType":"IMPLICIT","ruleContent":"\u6D4B\u8BD5\u89C4\u52192\uFF1A\u73B0\u91D1\u6D41\u5165\u76F8\u5173\u89C4\u5219","confidence":0.8,"isCrossTable":false,"category":"\u73B0\u91D1\u6D41\u5165","createdTime":"2025-06-05T11:01:19"},{"id":3,"task":{"id":"test-task-123","taskName":"\u6D4B\u8BD5\u4EFB\u52A1","createdTime":"2025-06-05T11:01:05","completedTime":null,"status":"COMPLETED","progress":100,"lastCompletedStep":"STEP_COMPLETE","chunkSize":5000,"wordFilePaths":[],"excelFilePaths":[],"resultFilePath":"uploads\/results\/test-task-123_result.json"},"fieldNames":"[\"field1\",\"field5\"]","ruleType":"EXPLICIT","ruleContent":"\u6D4B\u8BD5\u89C4\u52193\uFF1A\u8DE8\u8868\u89C4\u5219","confidence":0.95,"isCrossTable":true,"category":"\u62A5\u8868\u57FA\u672C\u4FE1\u606F","createdTime":"2025-06-05T11:01:19"},{"id":4,"task":{"id":"test-task-123","taskName":"\u6D4B\u8BD5\u4EFB\u52A1","createdTime":"2025-06-05T11:01:05","completedTime":null,"status":"COMPLETED","progress":100,"lastCompletedStep":"STEP_COMPLETE","chunkSize":5000,"wordFilePaths":[],"excelFilePaths":[],"resultFilePath":"uploads\/results\/test-task-123_result.json"},"fieldNames":"[\"field3\",\"field4\"]","ruleType":"EXPLICIT","ruleContent":"\u6D4B\u8BD5\u89C4\u52194\uFF1A\u53E6\u4E00\u4E2A\u73B0\u91D1\u6D41\u5165\u89C4\u5219","confidence":0.85,"isCrossTable":false,"category":"\u73B0\u91D1\u6D41\u5165","createdTime":"2025-06-05T11:01:19"}];
+        const allExcelFields = [{"id":1,"task":{"id":"test-task-123","taskName":"\u6D4B\u8BD5\u4EFB\u52A1","createdTime":"2025-06-05T11:01:05","completedTime":null,"status":"COMPLETED","progress":100,"lastCompletedStep":"STEP_COMPLETE","chunkSize":5000,"wordFilePaths":[],"excelFilePaths":[],"resultFilePath":"uploads\/results\/test-task-123_result.json"},"tableName":"table1","fieldName":"field1","fieldType":"STRING","description":"\u6D4B\u8BD5\u5B57\u6BB51","category":"\u62A5\u8868\u57FA\u672C\u4FE1\u606F"},{"id":2,"task":{"id":"test-task-123","taskName":"\u6D4B\u8BD5\u4EFB\u52A1","createdTime":"2025-06-05T11:01:05","completedTime":null,"status":"COMPLETED","progress":100,"lastCompletedStep":"STEP_COMPLETE","chunkSize":5000,"wordFilePaths":[],"excelFilePaths":[],"resultFilePath":"uploads\/results\/test-task-123_result.json"},"tableName":"table1","fieldName":"field2","fieldType":"STRING","description":"\u6D4B\u8BD5\u5B57\u6BB52","category":"\u62A5\u8868\u57FA\u672C\u4FE1\u606F"},{"id":3,"task":{"id":"test-task-123","taskName":"\u6D4B\u8BD5\u4EFB\u52A1","createdTime":"2025-06-05T11:01:05","completedTime":null,"status":"COMPLETED","progress":100,"lastCompletedStep":"STEP_COMPLETE","chunkSize":5000,"wordFilePaths":[],"excelFilePaths":[],"resultFilePath":"uploads\/results\/test-task-123_result.json"},"tableName":"table2","fieldName":"field3","fieldType":"STRING","description":"\u6D4B\u8BD5\u5B57\u6BB53","category":"\u73B0\u91D1\u6D41\u5165"},{"id":4,"task":{"id":"test-task-123","taskName":"\u6D4B\u8BD5\u4EFB\u52A1","createdTime":"2025-06-05T11:01:05","completedTime":null,"status":"COMPLETED","progress":100,"lastCompletedStep":"STEP_COMPLETE","chunkSize":5000,"wordFilePaths":[],"excelFilePaths":[],"resultFilePath":"uploads\/results\/test-task-123_result.json"},"tableName":"table2","fieldName":"field4","fieldType":"STRING","description":"\u6D4B\u8BD5\u5B57\u6BB54","category":"\u73B0\u91D1\u6D41\u5165"},{"id":5,"task":{"id":"test-task-123","taskName":"\u6D4B\u8BD5\u4EFB\u52A1","createdTime":"2025-06-05T11:01:05","completedTime":null,"status":"COMPLETED","progress":100,"lastCompletedStep":"STEP_COMPLETE","chunkSize":5000,"wordFilePaths":[],"excelFilePaths":[],"resultFilePath":"uploads\/results\/test-task-123_result.json"},"tableName":"table3","fieldName":"field5","fieldType":"STRING","description":"\u6D4B\u8BD5\u5B57\u6BB55","category":"\u62A5\u8868\u4EBA\u5458\u4FE1\u606F"}]; // Store excelFields
 
         document.addEventListener('DOMContentLoaded', function () {
             const rulesContainer = document.getElementById('rulesContainer');
@@ -423,23 +510,6 @@
             const visibleRulesCountSpan = document.getElementById('visibleRulesCount');
             const totalRulesCountSpan = document.getElementById('totalRulesCount');
             const categoryFieldsDisplayDiv = document.getElementById('categoryFieldsDisplay'); // Get category fields display div
-
-            // 按置信度排序规则（从高到低）
-            function sortRulesByConfidence() {
-                const ruleItems = Array.from(document.querySelectorAll('.rule-item'));
-                
-                // 对规则元素进行排序
-                ruleItems.sort((a, b) => {
-                    const confidenceA = parseFloat(a.querySelector('.confidence strong').textContent);
-                    const confidenceB = parseFloat(b.querySelector('.confidence strong').textContent);
-                    return confidenceB - confidenceA; // 从高到低排序
-                });
-                
-                // 重新添加排序后的元素到容器中
-                ruleItems.forEach(item => {
-                    rulesContainer.appendChild(item);
-                });
-            }
 
             // Populate field names from JSON string
             document.querySelectorAll('.field-names').forEach(div => {
@@ -576,7 +646,6 @@
                  totalRulesCountSpan.textContent = allRules ? allRules.length : 0;
             }
             populateCategoryFilter();
-            sortRulesByConfidence(); // 应用置信度排序
             filterRules();
             displayCategoryFields(categoryFilter.value); // Initial display of fields if a category is pre-selected (e.g. "ALL")
         });

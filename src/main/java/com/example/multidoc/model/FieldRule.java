@@ -28,6 +28,12 @@ public class FieldRule {
     @Column
     private Float confidence;
     
+    @Column(name = "is_cross_table")
+    private Boolean isCrossTable = false;
+    
+    @Column(name = "category")
+    private String category;
+    
     @Column(name = "created_time")
     private LocalDateTime createdTime = LocalDateTime.now();
     
@@ -89,6 +95,22 @@ public class FieldRule {
         this.confidence = confidence;
     }
 
+    public Boolean getIsCrossTable() {
+        return isCrossTable;
+    }
+
+    public void setIsCrossTable(Boolean isCrossTable) {
+        this.isCrossTable = isCrossTable;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
+    }
+
     public LocalDateTime getCreatedTime() {
         return createdTime;
     }
@@ -104,6 +126,7 @@ public class FieldRule {
                 ", fieldNames='" + fieldNames + '\'' +
                 ", ruleType=" + ruleType +
                 ", confidence=" + confidence +
+                ", isCrossTable=" + isCrossTable +
                 '}';
     }
 } 

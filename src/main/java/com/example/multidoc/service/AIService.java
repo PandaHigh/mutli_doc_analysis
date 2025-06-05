@@ -572,7 +572,7 @@ public class AIService {
             "   - content: 规则内容（必填，详细描述规则的具体要求和逻辑）\n" +
             "   - confidence: 置信度（必填，0-1之间的数值，表示规则的可靠性）\n" +
             "   - reasoning: 推理过程（必填，说明如何得出该规则的思考过程，特别是对跨表隐式规则要详细阐述推导逻辑）\n" +
-            "   - isInterTable: 布尔值（必填，标识是否为跨表规则）\n\n" +
+            "   - isCrossTable: 布尔值（必填，标识是否为跨表规则）\n\n" +
             "示例返回格式：\n" +
             "{\n" +
             "  \"rules\": [\n" +
@@ -582,7 +582,7 @@ public class AIService {
             "      \"content\": \"资产负债表中的贷款总额必须等于贷款明细表中各项贷款合计\",\n" +
             "      \"confidence\": 0.95,\n" +
             "      \"reasoning\": \"虽然填报说明未明确提及，但根据会计准则和报表一致性原则，总表中的汇总项应等于明细表中相应项目的合计值\",\n" +
-            "      \"isInterTable\": true\n" +
+            "      \"isCrossTable\": true\n" +
             "    },\n" +
             "    {\n" +
             "      \"fields\": [\"资产负债表-资产合计\", \"资产负债表-负债合计\", \"资产负债表-所有者权益合计\"],\n" +
@@ -590,7 +590,7 @@ public class AIService {
             "      \"content\": \"资产合计必须等于负债合计加所有者权益合计\",\n" +
             "      \"confidence\": 0.98,\n" +
             "      \"reasoning\": \"虽然填报说明未明确提及，但这是会计恒等式，是银行财务报表的基本平衡关系\",\n" +
-            "      \"isInterTable\": false\n" +
+            "      \"isCrossTable\": false\n" +
             "    }\n" +
             "  ]\n" +
             "}";
@@ -672,5 +672,37 @@ public class AIService {
             logger.error("调用AI进行规则验证失败", e);
             throw new RuntimeException("规则验证失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 从Word文档的前2000字中提取报表报送范围
+     * @param documentText Word文档的前2000字
+     * @param fileName 文档文件名
+     * @return 提取的报表报送范围
+     */
+    public String extractDocumentScope(String documentText, String fileName) {
+        String systemPrompt = "你是一个专业的金融报表分析专家，擅长从文档中提取报表的报送目的和范围信息。";
+        
+        String userPrompt = String.format(
+            "以下是一份文档的前2000字，文件名为：%s\n\n" +
+            "---\n" +
+            "%s\n" +
+            "---\n\n" +
+            "请仔细分析上述文档内容，从中提取出该报表的报送目的和范围。重点关注以下信息：\n" +
+            "1. 报表的报送对象（如：各银行、金融机构等）\n" +
+            "2. 报表收集的具体内容（如：企业贷款情况、资产负债情况等）\n" +
+            "3. 报表的报送目的（如：监管要求、统计分析等）\n\n" +
+            "要求：\n" +
+            "1. 提取格式为：本表旨在收集[报送对象]在[时间范围]对[具体内容]的有关情况\n" +
+            "2. 如果找不到明确信息，请回答\"未找到明确的报送范围\"\n" +
+            "3. 请确保提取的信息准确、完整，但表述要简洁\n" +
+            "4. 如果文档中使用了\"本表\"、\"本报表\"等表述，请保留这些表述\n" +
+            "5. 如果提取到了多个可能的报送范围，请列出所有可能的报送范围",
+            fileName, documentText
+        );
+        
+        logger.info("开始从文档 {} 提取报送范围信息", fileName);
+        
+        return executePrompt(systemPrompt, userPrompt);
     }
 } 
